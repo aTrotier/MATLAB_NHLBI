@@ -6,9 +6,9 @@ function [mag_RT, seheader, SNR_s] = recon_spiral_SE_beta(dfile,  nfile, SpiDes)
 
 %% Set up
 raw_data = h5read(dfile,'/dataset/data');
-ismrmrd_s = read_h5_header(dfile);
+iRD_s = read_h5_header(dfile);
 
-disp(['Reconstructing: ' ismrmrd_s.measurementInformation.protocolName]);
+disp(['Reconstructing: ' iRD_s.measurementInformation.protocolName]);
 
 figure, 
 subplot(3,2,1); plot(1+double(raw_data.head.idx.kspace_encode_step_1)); title('kspace step 1')
@@ -38,7 +38,7 @@ end
 temp = raw_data.head.user_float(:,1);
 VDSf = temp(6);
 
-matrix = ismrmrd_s.encoding.reconSpace.matrixSize.x;
+matrix = iRD_s.encoding.reconSpace.matrixSize.x;
 
 dt = raw_data.head.sample_time_us(1)*1e-6;
 matrix_size = [matrix matrix];
@@ -60,8 +60,8 @@ seheader.averages = averages;
 seheader.channels = channels;
 
 %% Noise checks
-disp(['Dependency ID: ' ismrmrd_s.measurementInformation.measurementDependency.measurementID]);
-asi_names = fieldnames(ismrmrd_s.acquisitionSystemInformation);
+disp(['Dependency ID: ' iRD_s.measurementInformation.measurementDependency.measurementID]);
+asi_names = fieldnames(iRD_s.acquisitionSystemInformation);
 n_iRD = read_h5_header(nfile);
 nasi_names = fieldnames(n_iRD.acquisitionSystemInformation);
 
@@ -72,8 +72,8 @@ for i = 1:length(asi_names)
     if regexp(asi_names{i}, 'coilLabel')
 %         [asi_names{i} ' ' nasi_names{i}]
         solid_int = solid_int + 1;
-        coil_label{solid_int,1} = ismrmrd_s.acquisitionSystemInformation.(matlab.lang.makeValidName(asi_names{i})).coilNumber;
-        coil_label{solid_int,2} = ismrmrd_s.acquisitionSystemInformation.(matlab.lang.makeValidName(asi_names{i})).coilName;
+        coil_label{solid_int,1} = iRD_s.acquisitionSystemInformation.(matlab.lang.makeValidName(asi_names{i})).coilNumber;
+        coil_label{solid_int,2} = iRD_s.acquisitionSystemInformation.(matlab.lang.makeValidName(asi_names{i})).coilName;
         
         coil_label{solid_int,3} = n_iRD.acquisitionSystemInformation.(matlab.lang.makeValidName(nasi_names{i})).coilNumber;
         coil_label{solid_int,4} = n_iRD.acquisitionSystemInformation.(matlab.lang.makeValidName(nasi_names{i})).coilName;
@@ -112,7 +112,7 @@ end
 % vds factor % temp = raw_data.head.user_int(6,1);
 % FOV = 25.6;
 % FOV = double(temp(6));  if FOV== 0; FOV = 25.6; end
-FOV = ismrmrd_s.encoding.reconSpace.fieldOfView_mm.x/10;
+FOV = iRD_s.encoding.reconSpace.fieldOfView_mm.x/10;
 
 TSEf = double(temp(8)); if TSEf==0; TSEf = 1; end; clear temp;
 
@@ -174,10 +174,12 @@ end
 % tRR = -1*((delayFactor*(1e-5)/dt)-round(delayFactor*(1e-5)/dt));
 tRR = 0;
 
+sR.R = R;
+sR.T = iRD_s.acquisitionSystemInformation.systemFieldStrength_T;
+trajectory_nominal = apply_GIRF(gradients_nominal, dt, sR, tRR );
+    % trajectory_nominal = apply_GIRF(gradients_nominal, dt, R, tRR );
 
-% tRR = 0;
-trajectory_nominal = apply_GIRF(gradients_nominal, dt, R, tRR );
-trajectory_nominal = trajectory_nominal(:,:,1:2);
+    trajectory_nominal = trajectory_nominal(:,:,1:2);
 
 % spiral_start = floor(delayFactor*(1e-5)/dt);
 
@@ -626,7 +628,7 @@ if T2_map_fit
     fo = fitoptions(lft);
     fo.Lower = [0 0];
     fo.Upper = [10*max(img_tse(:)) 1000];
-    TE_vec = ismrmrd_s.sequenceParameters.TE:ismrmrd_s.sequenceParameters.TE:ismrmrd_s.sequenceParameters.TE*TSEf;
+    TE_vec = iRD_s.sequenceParameters.TE:iRD_s.sequenceParameters.TE:iRD_s.sequenceParameters.TE*TSEf;
     
     temp_roi = imclose(img_ccm > mean(img_ccm(:)),strel('disk',10)) ;  figure, imshow(img_ccm, []); hold on, contour(temp_roi, 'b');
     [tempr, tempc] = find(temp_roi);

@@ -1,22 +1,48 @@
 function [kPred, GPred] = apply_GIRF(gradients_nominal, dt, R, tRR)
-% function [kPred, GPred] = apply_GIRF(gradients_nominal, dt, R, GIRF)
-% [traj, grad, weights, st] = apply_GIRF(gradients_nominal, GIRF)
+% function [kPred, GPred] = apply_GIRF(gradients_nominal, dt, R, tRR)
+% Hack to R to handle field strength
+% R.R = rotation matrix;
+% R.T = field strength {}
+% 
+% tRR is sub-dwell-time offset (-1 to 1) [0]?
 
-% % if nargin < 4
-    % 1.5T Aera (Measured in Cath lab)
-    %     load('spiral_toolbox RR\acw_girf\GIRF_20160501.mat'); disp('Using spiral_toolbox RR\acw_girf\GIRF_20160501.mat');
-    % %     load('OCELOT_studies\GIRF_20180306.mat');             disp('Using OCELOT_studies\GIRF_20180306.mat');
+% handle "nasty" co-opting of R-variable to include field info. 
+if isstruct(R)
+    field_T = R.T;
+    R = R.R;
+else
+    field_T = 0.55;
+end
+
+%% LOAD GIRF (Field/scanner dependent)            
     
-    % shared folder implementation
-    mpath = mfilename('fullpath');
-    a = regexp(mpath, filesep);
-    mpath = [mpath(1:a(end)) 'GIRF_measurements' filesep];
-    
+% shared folder implementation
+mpath = mfilename('fullpath');
+a = regexp(mpath, filesep);
+mpath = [mpath(1:a(end)) 'GIRF_measurements' filesep];
+
+% Field selection needs to be handled upstream, or include the headers
+% in to this file
+
+if field_T == 1.5
+    % 1.5T Aera (NHLBI 2016)
+    girf_file = 'GIRF_20160501.mat';
+elseif field_T == 0.55
+    % 0.55T Aera (NHLBI 2018)
     girf_file = 'GIRF_20180704.mat';
-    
-    load([mpath girf_file]);               disp(['Using ' mpath girf_file]);
-% % end
+end
 
+% === Load file ===
+try
+    load([mpath girf_file]);               disp(['Using ' mpath girf_file]);
+catch
+    warning('Couldn''t find the GIRF file, using ones..');
+    GIRF = ones(3800,3);
+end
+
+
+
+%%
 % dtGIRF = 10e-6;dtSim = 10e-6; 
 dtGIRF = 10e-6;
 dtSim = dt;%10e-6; 
