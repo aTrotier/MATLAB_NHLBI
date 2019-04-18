@@ -8,7 +8,7 @@ end
 
 % -------- SCRATCH ---------------
 % Put mess here:
-function plot_poet_data(poet_data)
+function p = plot_poet_data(poet_data)
 
 scale_pd = max(abs(poet_data),[],1);
 
@@ -20,7 +20,7 @@ figure, hold on,
     plot(poet_data(:,3)/scale_pd(3)+yax_des(3), 'k-')
     plot(poet_data(:,4)/scale_pd(4)+yax_des(2), 'k-')
     plot(poet_data(:,5)/scale_pd(5)+yax_des(1), 'k-')
-
+    
     ytick('off'); ylim([-0.1 8.5]);
 
 names = {'Z';'Y';'X';'RF';'ADC'};
