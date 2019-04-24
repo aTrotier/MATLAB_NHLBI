@@ -137,10 +137,10 @@ gradients_nominal =  zeros(samples2,interleaves,2);
 neg = -1;
 for solid_int= 1:interleaves
     rot = (solid_int-1)*(2*pi/interleaves);
-    trajectory_nominal(:,solid_int,2) = neg*-( real(k(1:samples2)) *cos(rot) + imag(k(1:samples2)) *sin(rot));
-    trajectory_nominal(:,solid_int,1) = neg*-(-real(k(1:samples2)) *sin(rot) + imag(k(1:samples2)) *cos(rot));
-    gradients_nominal(:,solid_int,2)  = neg*-( real(g(1:samples2)) *cos(rot) + imag(g(1:samples2)) *sin(rot));
-    gradients_nominal(:,solid_int,1)  = neg*-(-real(g(1:samples2)) *sin(rot) + imag(g(1:samples2)) *cos(rot));
+    trajectory_nominal(:,solid_int,1) = neg*-( real(k(1:samples2)) *cos(rot) + imag(k(1:samples2)) *sin(rot));
+    trajectory_nominal(:,solid_int,2) = neg*-(-real(k(1:samples2)) *sin(rot) + imag(k(1:samples2)) *cos(rot));
+    gradients_nominal(:,solid_int,1)  = neg*-( real(g(1:samples2)) *cos(rot) + imag(g(1:samples2)) *sin(rot));
+    gradients_nominal(:,solid_int,2)  = neg*-(-real(g(1:samples2)) *sin(rot) + imag(g(1:samples2)) *cos(rot));
 end
 
 %% 8-shot poet read
@@ -162,7 +162,8 @@ end
 %% GIRF corrections
 trajectory_nominal_u = trajectory_nominal;
 % [trajectory_nominal, weights_G, st_G] = spiral_set_up_GIRF(raw_data.head, FOV, matrix);
-R = [raw_data.head.read_dir(:,1), raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
+% R = [raw_data.head.read_dir(:,1), raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
+R = [raw_data.head.phase_dir(:,1), raw_data.head.read_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
 % tRR = -1*rem(delayFactor*1e5,dt)/dt;
 
 % chop off ADC ringing
@@ -597,10 +598,10 @@ if T2_map_fit
         
         % chop off ADC ringing
         spiral_start = floor(delayFactor*(1e-5)/dt); if spiral_start == 0; spiral_start = 1; end;
-        data_temp = zeros(samples2, length(raw_data.data)/TSEf, channels);
-        data_temp(1:(1+samples2-spiral_start),:,:,:,:) = squeeze(data_tse(spiral_start:samples2,iTSE,:,:));
+%         data_temp = zeros(samples2, length(raw_data.data)/TSEf, channels);
+%         data_temp(1:(1+samples2-spiral_start),:,:,:,:) = squeeze(data_tse(spiral_start:samples2,iTSE,:,:));
         
-        data_temp = reshape(data_temp, [samples*length(raw_data.data)/TSEf, channels]);
+        data_temp = reshape(data_tse(:,iTSE,:,:), [samples*length(raw_data.data)/TSEf, channels]);
         
         csm_est_frames = iTSE:TSEf:length(raw_data.data);
         omega = trajectory_nominal(:,double(raw_data.head.idx.kspace_encode_step_1(csm_est_frames))+1,:)*(pi/max(max(max(trajectory_nominal))));
@@ -608,13 +609,16 @@ if T2_map_fit
         
         omega = reshape(omega,length(csm_est_frames)*samples2,2);
         csm_st = nufft_init(omega, matrix_size, [6 6],matrix_size.*2, matrix_size./2);
-        %     gradients_nominal2 = reshape(gradients_nominal2, length(csm_est_frames)*size(trajectory_nominal,1),2);
-        %     grad = complex(gradients_nominal2(:,1),gradients_nominal2(:,2));
-        %     kk = complex(omega(:,2),omega(:,1));
-        %     csm_weights = abs(grad(:)) .* abs(sin(angle(grad(:))-angle(kk(:))))*10; %Estimating weights from Meyer et al. Magn Reson Med. 1992 Dec;28(2):202-13.
-        csm_weights = DCF_voronoi_RR(double(trajectory_nominal(:,double(raw_data.head.idx.kspace_encode_step_1(csm_est_frames))+1,:)),0,0);
+        gradients_nominal2 = reshape(gradients_nominal2, length(csm_est_frames)*size(trajectory_nominal,1),2);
+        grad = complex(gradients_nominal2(:,1),gradients_nominal2(:,2));
+        kk = complex(omega(:,1),omega(:,2));
+        csm_weights = abs(grad(:)) .* abs(sin(angle(grad(:))-angle(kk(:))))*10; %Estimating weights from Meyer et al. Magn Reson Med. 1992 Dec;28(2):202-13.
+        %         csm_weights = DCF_voronoi_RR(double(trajectory_nominal(:,double(raw_data.head.idx.kspace_encode_step_1(csm_est_frames))+1,:)),0,0);
         
         x = nufft_adj(data_temp.*repmat(csm_weights,[1,channels]), csm_st)/numel(repmat(csm_weights,[1,channels]));
+        csm = ismrm_estimate_csm_walsh( x );
+        ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels)); % with pre-whitened
+        
         %     img_tse(:,:,iTSE) = sqrt(sum(x.*conj(x),3));
         img_tse(:,:,iTSE) = abs( sum( squeeze( x ) .* ccm_roemer_optimal, 3) );
         

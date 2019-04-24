@@ -7,17 +7,17 @@ function [mag_RT] = recon_spiral(dfile,  nfile, SpiDes)
 
 %% Set up
 raw_data = h5read(dfile,'/dataset/data');
-ismrmrd_s = read_h5_header(dfile);
+iRD_s = read_h5_header(dfile);
 
-disp(['Reconstructing: ' ismrmrd_s.measurementInformation.protocolName]);
+disp(['Reconstructing: ' iRD_s.measurementInformation.protocolName]);
 
-figure, 
-subplot(3,2,1); plot(1+double(raw_data.head.idx.kspace_encode_step_1)); title('kspace step 1')
-subplot(3,2,2); plot(1+double(raw_data.head.idx.average)); title('average')
-subplot(3,2,3); plot(1+double(raw_data.head.idx.set)); title('set')
-subplot(3,2,4); plot(1+double(raw_data.head.idx.slice)); title('slice')
-subplot(3,2,5); plot(1+double(raw_data.head.idx.repetition)); title('repetition')
-subplot(3,2,6); plot(1+double(raw_data.head.idx.phase)); title('phase')
+% figure, 
+% subplot(3,2,1); plot(1+double(raw_data.head.idx.kspace_encode_step_1)); title('kspace step 1')
+% subplot(3,2,2); plot(1+double(raw_data.head.idx.average)); title('average')
+% subplot(3,2,3); plot(1+double(raw_data.head.idx.set)); title('set')
+% subplot(3,2,4); plot(1+double(raw_data.head.idx.slice)); title('slice')
+% subplot(3,2,5); plot(1+double(raw_data.head.idx.repetition)); title('repetition')
+% subplot(3,2,6); plot(1+double(raw_data.head.idx.phase)); title('phase')
 
 interleaves = double(max(raw_data.head.idx.kspace_encode_step_1))+1;
 pe2 = 1+double(max(raw_data.head.idx.kspace_encode_step_2));
@@ -40,7 +40,7 @@ else
     pseudoRep = SpiDes(3);
 end
 
-matrix = ismrmrd_s.encoding.reconSpace.matrixSize.x;
+matrix = iRD_s.encoding.reconSpace.matrixSize.x;
 
 dt = raw_data.head.sample_time_us(1)*1e-6;
 matrix_size = [matrix matrix];
@@ -56,11 +56,11 @@ disp(table( Experiment_parameters,Value )); clear Experiment_parameters Value; d
  s_header.averages = averages;
  s_header.channels = channels;
 
- ismrmrd_s.s_header = s_header;
+ iRD_s.s_header = s_header;
  
 %% Noise checks
-disp(['Dependency ID: ' ismrmrd_s.measurementInformation.measurementDependency.measurementID]);
-asi_names = fieldnames(ismrmrd_s.acquisitionSystemInformation);
+disp(['Dependency ID: ' iRD_s.measurementInformation.measurementDependency.measurementID]);
+asi_names = fieldnames(iRD_s.acquisitionSystemInformation);
 n_iRD = read_h5_header(nfile);
 nasi_names = fieldnames(n_iRD.acquisitionSystemInformation);
 
@@ -71,8 +71,8 @@ for i = 1:length(asi_names)
     if regexp(asi_names{i}, 'coilLabel')
 %         [asi_names{i} ' ' nasi_names{i}]
         solid_int = solid_int + 1;
-        coil_label{solid_int,1} = ismrmrd_s.acquisitionSystemInformation.(matlab.lang.makeValidName(asi_names{i})).coilNumber;
-        coil_label{solid_int,2} = ismrmrd_s.acquisitionSystemInformation.(matlab.lang.makeValidName(asi_names{i})).coilName;
+        coil_label{solid_int,1} = iRD_s.acquisitionSystemInformation.(matlab.lang.makeValidName(asi_names{i})).coilNumber;
+        coil_label{solid_int,2} = iRD_s.acquisitionSystemInformation.(matlab.lang.makeValidName(asi_names{i})).coilName;
         
         coil_label{solid_int,3} = n_iRD.acquisitionSystemInformation.(matlab.lang.makeValidName(nasi_names{i})).coilNumber;
         coil_label{solid_int,4} = n_iRD.acquisitionSystemInformation.(matlab.lang.makeValidName(nasi_names{i})).coilName;
@@ -108,7 +108,7 @@ end
 
 %% Build Nominal Fully Sampled traj and gradients
 
-FOV = ismrmrd_s.encoding.reconSpace.fieldOfView_mm.x/10;
+FOV = iRD_s.encoding.reconSpace.fieldOfView_mm.x/10;
 
 FOV = [FOV -1*FOV*(1 - VDSf/100)]; disp(['FOV: ' num2str(FOV)])
 
@@ -136,16 +136,21 @@ end
 
 %% GIRF corrections
 trajectory_nominal_u = trajectory_nominal;
-R = [raw_data.head.read_dir(:,1), raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
+% R = [raw_data.head.read_dir(:,1), raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
+R = [raw_data.head.phase_dir(:,1), raw_data.head.read_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
 
 gradients_store = gradients_nominal;
 if delayFactor > 0
     spiral_start = floor(delayFactor*(1e-5)/dt); if spiral_start == 0; spiral_start = 1; end;
-    gradients_nominal = cat(1,zeros([spiral_start interleaves 2]), gradients_store(1:(samples-spiral_start),:,:));
+    gradients_nominal = cat(1,zeros([spiral_start interleaves 2]), gradients_store(1:(samples2-spiral_start),:,:));
 end
 tRR = 0;
 % tRR = 0;
-trajectory_nominal = apply_GIRF(gradients_nominal, dt, R, tRR );
+
+sR.R = R;
+sR.T = iRD_s.acquisitionSystemInformation.systemFieldStrength_T;
+trajectory_nominal = apply_GIRF(gradients_nominal, dt, sR, tRR );
+% trajectory_nominal = apply_GIRF(gradients_nominal, dt, R, tRR );
 trajectory_nominal = trajectory_nominal(:,:,1:2);
 
 %% Collect all data
@@ -176,6 +181,8 @@ for ii = 1:length(raw_data.data)
     
 end
 
+% memory management
+clear raw_data;
 
 %% recon
 
@@ -187,13 +194,47 @@ recon_st = nufft_init(omega, matrix_size, [6 6],matrix_size.*2, matrix_size./2);
 % spiral-out weight estimation
 recon_weights = DCF_voronoi_RR(double(trajectory_nominal),0,0); % figure, plot(recon_weights);
 
-data_store = kspace;
+% data_store = kspace;
+
+if pseudoRep
+    %                    [samps ints pe2 ave sli con pha rep set cha]
+    pr_k = squeeze(kspace(  : ,  : ,  1 , : , 1 , 1 , 1 , 1 , 1 , : ));
+    
+    if length(size(pr_k)) == 3
+        pr_k = reshape(pr_k,[size(pr_k,1) size(pr_k,2) 1 size(pr_k,3)]);
+    end
+    av_dim = 3;
+    
+    pseudo_reps = 100; disp(['Running ' num2str(pseudo_reps) ' pseudo-reps']);
+    
+    img_pr = zeros([matrix_size pseudo_reps]);
+    
+    for i = 1:pseudo_reps
+        RR_loop_count(i,pseudo_reps);
+        data_pr = pr_k + complex(randn(size(pr_k)),randn(size(pr_k)));
+        data_pr = squeeze(mean(data_pr,av_dim));
+        data_pr = reshape(data_pr,interleaves*samples2,channels);
+                
+        x = squeeze(nufft_adj(data_pr.*repmat(recon_weights,[1,channels]), recon_st));
+        % calculate coil combine
+        csm = ismrm_estimate_csm_walsh(x); 
+        ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels)); % with pre-whitened
+
+        img_pr(:,:,i) = abs( sum( x .* ccm_roemer_optimal , 3) );
+    end
+        
+    g = std(abs(img_pr + max(abs(img_pr(:)))),[],3); %Measure variation, but add offset to create "high snr condition"
+    g(g < eps) = 1;
+    snr = mean(img_pr,3)./g;
+    
+    mag_RT.snr = snr;
+end
 
 kspace = mean(kspace,4); % pseudo-rep will need to preceed this step
 
 figure,
 make_dev;
-cCoil_imgs = zeros([matrix_size pe2 averages slices contrasts phases reps sets ]);
+cCoil_imgs = zeros([matrix_size pe2 1 slices contrasts phases reps sets ]);
 % % timer_vec = zeros(1,slices*contrasts*phases*reps*sets); tcounter = 0;
 for slc = 1:slices
     for coc = 1:contrasts
@@ -226,7 +267,7 @@ imgs = squeeze(cCoil_imgs);
 
 %% return components
 mag_RT.imgs = imgs;
-mag_RT.header = ismrmrd_s;
+mag_RT.header = iRD_s;
 
 
 

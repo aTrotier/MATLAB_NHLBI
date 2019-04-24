@@ -276,21 +276,39 @@ av_dim = 3;
 pseudo_reps = 100;
 disp(['Running ' num2str(pseudo_reps) ' pseudo-reps']);
 
+%==== inefficient, calc b1 combine each time (bias?) =====
 % estimate csm from data 
 ncoils = size(crt_k,ndims(crt_k));
-img = ismrm_transform_kspace_to_image(squeeze(mean(crt_k,av_dim)),[1 2]); % montage_RR(abs(img));figure, imshow(sqrt(sum(img.*conj(img),3)),[])
-csm = ismrm_estimate_csm_walsh(img); % montage_RR((csm));
-% calculate coil combine
-ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(ncoils)); % with pre-whitened
 
 img_pr = zeros(size(crt_k,1), size(crt_k,2), pseudo_reps);
 for i = 1:pseudo_reps
     data_pr = crt_k + complex(randn(size(crt_k)),randn(size(crt_k)));
     data_pr = squeeze(mean(data_pr,av_dim));
     x = ismrm_transform_kspace_to_image(data_pr,[1 2]);
-%     img_pr(:,:,i) = sqrt(sum(x.*conj(x),3)); % NO!
+
+    csm = ismrm_estimate_csm_walsh(x);
+    ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(ncoils)); 
+    
     img_pr(:,:,i) = abs(sum(x .* ccm_roemer_optimal, 3));
 end
+
+
+%==== efficient, calc b1 combine once =====
+% % % estimate csm from data 
+% % ncoils = size(crt_k,ndims(crt_k));
+% % img = ismrm_transform_kspace_to_image(squeeze(mean(crt_k,av_dim)),[1 2]); % montage_RR(abs(img));figure, imshow(sqrt(sum(img.*conj(img),3)),[])
+% % csm = ismrm_estimate_csm_walsh(img); % montage_RR((csm));
+% % % calculate coil combine
+% % ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(ncoils)); % with pre-whitened
+% % 
+% % img_pr = zeros(size(crt_k,1), size(crt_k,2), pseudo_reps);
+% % for i = 1:pseudo_reps
+% %     data_pr = crt_k + complex(randn(size(crt_k)),randn(size(crt_k)));
+% %     data_pr = squeeze(mean(data_pr,av_dim));
+% %     x = ismrm_transform_kspace_to_image(data_pr,[1 2]);
+% % %     img_pr(:,:,i) = sqrt(sum(x.*conj(x),3)); % NO!
+% %     img_pr(:,:,i) = abs(sum(x .* ccm_roemer_optimal, 3));
+% % end
 
 % img_pr_orig = img_pr;
 img_pr = img_pr( size(crt_k,1)/4:size(crt_k,1)/4 +size(crt_k,1)/2 -1, :,:);

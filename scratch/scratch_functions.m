@@ -8,7 +8,22 @@ end
 
 % -------- SCRATCH ---------------
 % Put mess here:
-function p = plot_poet_data(poet_data)
+function R_info = RR_rot_m(R)
+% https://en.wikipedia.org/wiki/Rotation_matrix
+symmetric_flag = R - R';
+
+if sum(symmetric_flag) == 0
+    R_info.axis = eig(R); % ? Not sure what to do here
+else
+    R_info.axis = [R(8) - R(6); R(3) - R(7) ; R(4) - R(2)];
+end
+
+R_info.axis = R_info.axis/norm(R_info.axis);
+R_info.angle = acosd((sum(diag(R)) - 1)/2);
+
+end
+
+function plot_poet_data(poet_data)
 
 scale_pd = max(abs(poet_data),[],1);
 

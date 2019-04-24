@@ -18,7 +18,6 @@ end
 function check_noise_dependency(iRD_s_data, iRD_s_noise)
 asi_names = fieldnames(iRD_s_data.acquisitionSystemInformation);
 nasi_names = fieldnames(iRD_s_noise.acquisitionSystemInformation);
-channels = iRD_s_noise.acquisitionSystemInformation.receiverChannels;
 
 solid_int = 0;
 coil_label = cell(channels,4);
