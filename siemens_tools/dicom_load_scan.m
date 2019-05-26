@@ -1,4 +1,4 @@
-function [x, xinfo] = load_scan(path1, scanRange)
+function [x, xinfo] = dicom_load_scan(path1, scanRange)
 % [x, xinfo] = load_scan(<optional-UI>path1, <optional>scanRange)
 %
 % Returns a 3D array <x>, and the dicom header <xinfo>, given the directory
@@ -29,7 +29,7 @@ for j = scanRange
         % multi-echo/-inversion time experiments. 
         xinfo = dicominfo([path1 filesep dir1(j+2).name]);
         
-        if (~isempty(xinfo.EchoTime)); te_vec(j) = xinfo.EchoTime; end
+        if isfield(xinfo, 'EchoTime'); if (~isempty(xinfo.EchoTime)); te_vec(j) = xinfo.EchoTime; end; end
 
         if isfield(xinfo, 'InversionTime')
             

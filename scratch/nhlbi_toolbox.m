@@ -103,6 +103,8 @@ if isunix
     else
         % assume string is already in mac format
     end
+else 
+    macString = pcString;    
 end
 
 end

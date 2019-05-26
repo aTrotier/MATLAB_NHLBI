@@ -16,6 +16,10 @@
 
 function [img_s,kspace] = recon_cartesian(file, nfile, SNR_flag)
 %% Read data file
+
+file = RR_run_on_mac(file); % incorporate with NHLBI toolbox
+nfile = RR_run_on_mac(nfile);
+
 raw_data= h5read(file, '/dataset/data');
 ismrmrd_s = read_h5_header(file); disp(' ');disp('### Protocol Name ###');disp(ismrmrd_s.measurementInformation.protocolName);disp(' ');
 header = ismrmrd_s;
@@ -153,9 +157,22 @@ end
 
 if SNR_flag
 
-    snr = zeros(ismrmrd_s.encoding.reconSpace.matrixSize.x, ismrmrd_s.encoding.reconSpace.matrixSize.y, slices);
+    if isempty(SNR_flag)
+        pseudoRep_slices = 1:slices;
+    end
+    if SNR_flag > 0 % specify slice(s);
+        pseudoRep_slices = SNR_flag;
+        
+        if pseudoRep_slices > slices
+            pseudoRep_slices = RR_slice_order(round(slices/2));
+            warning(['PR slice > #slices, using slice ' num2str(pseudoRep_slices)])
+        end
+    end
+        
+%     snr = zeros(ismrmrd_s.encoding.reconSpace.matrixSize.x, ismrmrd_s.encoding.reconSpace.matrixSize.y, slices);
+    snr = zeros(ismrmrd_s.encoding.reconSpace.matrixSize.x, size(kspace,2), slices);
     
-    for iSlice = 1:slices
+    for iSlice = pseudoRep_slices
 %         snr(:,:,iSlice) = cartesian_pseudoreps(squeeze(kspace(:,:,:,:,iSlice,:,:,:,:,:)));
           snr(:,:,iSlice) = cartesian_pseudoreps(squeeze(kspace(:,:,:,:,iSlice,1,1,1,1,:)));
     end
@@ -276,12 +293,11 @@ av_dim = 3;
 pseudo_reps = 100;
 disp(['Running ' num2str(pseudo_reps) ' pseudo-reps']);
 
-%==== inefficient, calc b1 combine each time (bias?) =====
-% estimate csm from data 
 ncoils = size(crt_k,ndims(crt_k));
-
 img_pr = zeros(size(crt_k,1), size(crt_k,2), pseudo_reps);
+
 for i = 1:pseudo_reps
+    RR_loop_count(i,pseudo_reps);
     data_pr = crt_k + complex(randn(size(crt_k)),randn(size(crt_k)));
     data_pr = squeeze(mean(data_pr,av_dim));
     x = ismrm_transform_kspace_to_image(data_pr,[1 2]);
@@ -291,24 +307,6 @@ for i = 1:pseudo_reps
     
     img_pr(:,:,i) = abs(sum(x .* ccm_roemer_optimal, 3));
 end
-
-
-%==== efficient, calc b1 combine once =====
-% % % estimate csm from data 
-% % ncoils = size(crt_k,ndims(crt_k));
-% % img = ismrm_transform_kspace_to_image(squeeze(mean(crt_k,av_dim)),[1 2]); % montage_RR(abs(img));figure, imshow(sqrt(sum(img.*conj(img),3)),[])
-% % csm = ismrm_estimate_csm_walsh(img); % montage_RR((csm));
-% % % calculate coil combine
-% % ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(ncoils)); % with pre-whitened
-% % 
-% % img_pr = zeros(size(crt_k,1), size(crt_k,2), pseudo_reps);
-% % for i = 1:pseudo_reps
-% %     data_pr = crt_k + complex(randn(size(crt_k)),randn(size(crt_k)));
-% %     data_pr = squeeze(mean(data_pr,av_dim));
-% %     x = ismrm_transform_kspace_to_image(data_pr,[1 2]);
-% % %     img_pr(:,:,i) = sqrt(sum(x.*conj(x),3)); % NO!
-% %     img_pr(:,:,i) = abs(sum(x .* ccm_roemer_optimal, 3));
-% % end
 
 % img_pr_orig = img_pr;
 img_pr = img_pr( size(crt_k,1)/4:size(crt_k,1)/4 +size(crt_k,1)/2 -1, :,:);

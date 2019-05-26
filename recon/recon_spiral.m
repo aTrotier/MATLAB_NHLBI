@@ -1,4 +1,4 @@
-function [mag_RT] = recon_spiral(dfile,  nfile, SpiDes)
+function [img_s] = recon_spiral(dfile,  nfile, SpiDes)
 % function [mag_RT] = recon_spiral(dfile,  nfile, SpiDes)
 % R Ramasawmy NHLBI April 2019
 % SpiDes = [VDSf <100> delayFactor <0> pseudoRep <0>]
@@ -6,6 +6,10 @@ function [mag_RT] = recon_spiral(dfile,  nfile, SpiDes)
 % yet applied here
 
 %% Set up
+
+dfile = RR_run_on_mac(dfile); % incorporate with NHLBI toolbox
+nfile = RR_run_on_mac(nfile);
+
 raw_data = h5read(dfile,'/dataset/data');
 iRD_s = read_h5_header(dfile);
 
@@ -38,6 +42,23 @@ else
     delayFactor = SpiDes(1);
     VDSf = SpiDes(2);
     pseudoRep = SpiDes(3);
+    
+    % pseudoRep = 0, no PR
+    %             n, perform PR on slice n  
+    %             [], perform PR on all slices
+    if isempty(pseudoRep)
+        pseudoRep = 1;
+        pseudoRep_slices = 1:slices;
+    end
+    if pseudoRep > 0 % specify slice(s);
+        pseudoRep_slices = pseudoRep;
+        pseudoRep = 1;
+        if pseudoRep_slices > slices
+            pseudoRep_slices = RR_slice_order(round(slices/2));
+            warning(['PR slice > #slices, using slice ' num2str(pseudoRep_slices)])
+        end
+    end
+        
 end
 
 matrix = iRD_s.encoding.reconSpace.matrixSize.x;
@@ -197,37 +218,40 @@ recon_weights = DCF_voronoi_RR(double(trajectory_nominal),0,0); % figure, plot(r
 % data_store = kspace;
 
 if pseudoRep
-    %                    [samps ints pe2 ave sli con pha rep set cha]
-    pr_k = squeeze(kspace(  : ,  : ,  1 , : , 1 , 1 , 1 , 1 , 1 , : ));
-    
-    if length(size(pr_k)) == 3
-        pr_k = reshape(pr_k,[size(pr_k,1) size(pr_k,2) 1 size(pr_k,3)]);
-    end
-    av_dim = 3;
-    
-    pseudo_reps = 100; disp(['Running ' num2str(pseudo_reps) ' pseudo-reps']);
-    
-    img_pr = zeros([matrix_size pseudo_reps]);
-    
-    for i = 1:pseudo_reps
-        RR_loop_count(i,pseudo_reps);
-        data_pr = pr_k + complex(randn(size(pr_k)),randn(size(pr_k)));
-        data_pr = squeeze(mean(data_pr,av_dim));
-        data_pr = reshape(data_pr,interleaves*samples2,channels);
-                
-        x = squeeze(nufft_adj(data_pr.*repmat(recon_weights,[1,channels]), recon_st));
-        % calculate coil combine
-        csm = ismrm_estimate_csm_walsh(x); 
-        ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels)); % with pre-whitened
-
-        img_pr(:,:,i) = abs( sum( x .* ccm_roemer_optimal , 3) );
-    end
+    for slc = pseudoRep_slices
+        %                    [samps ints pe2 ave sli con pha rep set cha]
+        pr_k = squeeze(kspace(  : ,  : ,  1 , : , slc , 1 , 1 , 1 , 1 , : ));
         
-    g = std(abs(img_pr + max(abs(img_pr(:)))),[],3); %Measure variation, but add offset to create "high snr condition"
-    g(g < eps) = 1;
-    snr = mean(img_pr,3)./g;
+        if length(size(pr_k)) == 3
+            pr_k = reshape(pr_k,[size(pr_k,1) size(pr_k,2) 1 size(pr_k,3)]);
+        end
+        av_dim = 3;
+        
+        pseudo_reps = 100; disp(['Running ' num2str(pseudo_reps) ' pseudo-reps']);
+        
+        img_pr = zeros([matrix_size pseudo_reps]);
+        
+        for i = 1:pseudo_reps
+            RR_loop_count(i,pseudo_reps);
+            data_pr = pr_k + complex(randn(size(pr_k)),randn(size(pr_k)));
+            data_pr = squeeze(mean(data_pr,av_dim));
+            data_pr = reshape(data_pr,interleaves*samples2,channels);
+            
+            x = squeeze(nufft_adj(data_pr.*repmat(recon_weights,[1,channels]), recon_st));
+            % calculate coil combine
+            csm = ismrm_estimate_csm_walsh(x);
+            ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels)); % with pre-whitened
+            
+            img_pr(:,:,i) = abs( sum( x .* ccm_roemer_optimal , 3) );
+        end
+        
+        g = std(abs(img_pr + max(abs(img_pr(:)))),[],3); %Measure variation, but add offset to create "high snr condition"
+        g(g < eps) = 1;
+        snr(:,:,slc) = mean(img_pr,3)./g;
+        
+    end
     
-    mag_RT.snr = snr;
+    img_s.snr = snr;
 end
 
 kspace = mean(kspace,4); % pseudo-rep will need to preceed this step
@@ -266,8 +290,8 @@ imgs = squeeze(cCoil_imgs);
 % montage_RR(imgs);
 
 %% return components
-mag_RT.imgs = imgs;
-mag_RT.header = iRD_s;
+img_s.imgs = imgs;
+img_s.header = iRD_s;
 
 
 

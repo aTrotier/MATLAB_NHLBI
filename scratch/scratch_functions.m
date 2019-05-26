@@ -8,6 +8,31 @@ end
 
 % -------- SCRATCH ---------------
 % Put mess here:
+function plot_rois(xi,x)
+montage_RR(xi);
+hold on; 
+contour(x.GM_roi, 'b'); 
+contour(x.WM_roi, 'y');
+end
+
+function subplot_link(data)
+num_wvd = size(data, 2);
+sp1 = floor(sqrt(num_wvd));
+sp2 = ceil(num_wvd/sp1);
+figure,
+hl = [];
+for i = 1:num_wvd
+    h.(matlab.lang.makeValidName(['x' num2str(i)])) = subplot(sp1, sp2, i);
+    plot(data(:,i))
+    hl = [hl, h.(matlab.lang.makeValidName(['x' num2str(i)]))];
+end
+linkaxes(hl, 'x');
+end
+
+function [output] = get_rois(xi,x)
+output = [mean(xi(x.WM_roi)) std(xi(x.WM_roi)) mean(xi(x.GM_roi)) std(xi(x.GM_roi))];
+end
+
 function R_info = RR_rot_m(R)
 % https://en.wikipedia.org/wiki/Rotation_matrix
 symmetric_flag = R - R';

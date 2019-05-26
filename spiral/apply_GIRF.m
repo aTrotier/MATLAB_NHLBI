@@ -24,7 +24,7 @@ mpath = [mpath(1:a(end)) 'GIRF_measurements' filesep];
 % Field selection needs to be handled upstream, or include the headers
 % in to this file
 
-if field_T == 1.5
+if field_T == 1.4940
     % 1.5T Aera (NHLBI 2016)
     girf_file = 'GIRF_20160501.mat';
 elseif field_T == 0.55
