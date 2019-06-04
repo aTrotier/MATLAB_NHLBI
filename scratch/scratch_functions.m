@@ -38,6 +38,52 @@ function y = is_even(x)
     y=~rem(x,2);
 end
 
+function grab_study(datPath)
+% requires specific data organisation
+% pastes all data in to the command window
+
+if nargin < 1
+    if ismac
+        datPath = '/__enter__path__/';
+    else
+        datPath = uigetdir('\__enter__path__\');
+    end
+    datPath = [datPath filesep];
+end
+
+dir_dp = dir(datPath);
+
+study_cell = cell(length(dir_dp), 1);
+
+for i = 1:length(dir_dp)
+    temp = dir_dp(i).name;
+    if regexp(temp, '.dat')
+        study_cell{i} = [['[] = recon_([' 'dirPath ''' temp(1:end-4) '.h5''' ']'] ',' [ '[' 'noisePath ''noise_' temp(1:end-4) '.h5''' ']);' ] ];
+    end
+end
+study_cell{1} = ['dirPath = ''' datPath 'h5' filesep ''';'];
+study_cell{2} = ['noisePath = ''' datPath 'noise' filesep ''';'];
+
+fprintf(1, '%s \n', study_cell{:});
+fprintf(1, '\n');
+
+end
+
+function z = quickmean(x,y)
+if nargin == 1
+    y = x;
+end
+roi = x > mean(x(:));
+z = mean(y(roi));
+end
+
+function y = nrr(x)
+y = x./mean(x(:));
+end
+
+% ########## EXTERNAL FUNCTIONS ###########
+
+% Colomap tests
 function res = grs2rgb(img, map)
 %%Convert grayscale images to RGB using specified colormap.
 %	IMG is the grayscale image. Must be specified as a name of the image 
@@ -105,51 +151,7 @@ res(:,:,2) = g;
 res(:,:,3) = b;
 end
 
-function grab_study(datPath)
-% requires specific data organisation
-% pastes all data in to the command window
-
-if nargin < 1
-    if ismac
-        datPath = '/Volumes/DIRHome/';
-    else
-        datPath = uigetdir('\\hl-share.nhlbi.nih.gov\DIRHome\RamasawmyR\Scan Data');
-    end
-    datPath = [datPath filesep];
-end
-
-dir_dp = dir(datPath);
-
-study_cell = cell(length(dir_dp), 1);
-
-for i = 1:length(dir_dp)
-    temp = dir_dp(i).name;
-    if regexp(temp, '.dat')
-        study_cell{i} = [['[] = recon_([' 'dirPath ''' temp(1:end-4) '.h5''' ']'] ',' [ '[' 'noisePath ''noise_' temp(1:end-4) '.h5''' ']);' ] ];
-    end
-end
-study_cell{1} = ['dirPath = ''' datPath 'h5' filesep ''';'];
-study_cell{2} = ['noisePath = ''' datPath 'noise' filesep ''';'];
-
-fprintf(1, '%s \n', study_cell{:});
-fprintf(1, '\n');
-
-end
-
-function z = quickmean(x,y)
-if nargin == 1
-    y = x;
-end
-roi = x > mean(x(:));
-z = mean(y(roi));
-end
-
-function y = nrr(x)
-y = x./mean(x(:));
-end
-
-% #####################
-% Hargreaves...
+% Hargreaves simulations...
 
 function [Afp,Bfp]=freeprecess(T,T1,T2,df)
 %
