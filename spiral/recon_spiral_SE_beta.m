@@ -59,52 +59,54 @@ seheader.number_aqs = length(raw_data.data);
 seheader.averages = averages;
 seheader.channels = channels;
 
-%% Noise checks
-disp(['Dependency ID: ' iRD_s.measurementInformation.measurementDependency.measurementID]);
-asi_names = fieldnames(iRD_s.acquisitionSystemInformation);
-n_iRD = read_h5_header(nfile);
-nasi_names = fieldnames(n_iRD.acquisitionSystemInformation);
-
-solid_int = 0;
-coil_label = cell(channels,4);
-coil_flag = zeros(channels,2);
-for i = 1:length(asi_names)
-    if regexp(asi_names{i}, 'coilLabel')
-        %         [asi_names{i} ' ' nasi_names{i}]
-        solid_int = solid_int + 1;
-        coil_label{solid_int,1} = iRD_s.acquisitionSystemInformation.(matlab.lang.makeValidName(asi_names{i})).coilNumber;
-        coil_label{solid_int,2} = iRD_s.acquisitionSystemInformation.(matlab.lang.makeValidName(asi_names{i})).coilName;
-        
-        coil_label{solid_int,3} = n_iRD.acquisitionSystemInformation.(matlab.lang.makeValidName(nasi_names{i})).coilNumber;
-        coil_label{solid_int,4} = n_iRD.acquisitionSystemInformation.(matlab.lang.makeValidName(nasi_names{i})).coilName;
-        
-        %         coil_label{solid_int,5} = coil_label{solid_int,1} == coil_label{solid_int,3};
-        %         coil_label{solid_int,6} = regexp(coil_label{solid_int,2}, coil_label{solid_int,4});
-        coil_flag(solid_int,1) = coil_label{solid_int,1} == coil_label{solid_int,3};
-        coil_flag(solid_int,2) = regexp(coil_label{solid_int,2}, coil_label{solid_int,4});
-    end
-end
-
-Data_CoilNum = coil_label(:,1);
-Data_CoilName = coil_label(:,2);
-Noise_CoilNum = coil_label(:,3);
-Noise_CoilName = coil_label(:,4);
-
-if sum(coil_flag(:,1)) ~= channels
-    disp('### WARNING ### ! Coil order mismatch! (not critical?) '); disp(' ');
-    disp(table(Data_CoilNum, Data_CoilName, Noise_CoilNum, Noise_CoilName)); disp(' ');
-elseif sum(coil_flag(:,2)) ~= channels
-    disp('### WARNING ###  ! Coil name mismatch!'); disp(' ');
-    disp(table(Data_CoilNum, Data_CoilName, Noise_CoilNum, Noise_CoilName)); disp(' ');
-end
-clear Data_CoilName Data_CoilNum Noise_CoilName Noise_CoilNum;
-
-
 %% Noise
 if isempty(nfile)
     dmtx = diag(ones(1,channels));
+
 else
+    %% Noise checks
+    disp(['Dependency ID: ' iRD_s.measurementInformation.measurementDependency.measurementID]);
+    asi_names = fieldnames(iRD_s.acquisitionSystemInformation);
+    n_iRD = read_h5_header(nfile);
+    nasi_names = fieldnames(n_iRD.acquisitionSystemInformation);
+    
+    solid_int = 0;
+    coil_label = cell(channels,4);
+    coil_flag = zeros(channels,2);
+    for i = 1:length(asi_names)
+        if regexp(asi_names{i}, 'coilLabel')
+            %         [asi_names{i} ' ' nasi_names{i}]
+            solid_int = solid_int + 1;
+            coil_label{solid_int,1} = iRD_s.acquisitionSystemInformation.(matlab.lang.makeValidName(asi_names{i})).coilNumber;
+            coil_label{solid_int,2} = iRD_s.acquisitionSystemInformation.(matlab.lang.makeValidName(asi_names{i})).coilName;
+            
+            coil_label{solid_int,3} = n_iRD.acquisitionSystemInformation.(matlab.lang.makeValidName(nasi_names{i})).coilNumber;
+            coil_label{solid_int,4} = n_iRD.acquisitionSystemInformation.(matlab.lang.makeValidName(nasi_names{i})).coilName;
+            
+            %         coil_label{solid_int,5} = coil_label{solid_int,1} == coil_label{solid_int,3};
+            %         coil_label{solid_int,6} = regexp(coil_label{solid_int,2}, coil_label{solid_int,4});
+            coil_flag(solid_int,1) = coil_label{solid_int,1} == coil_label{solid_int,3};
+            coil_flag(solid_int,2) = regexp(coil_label{solid_int,2}, coil_label{solid_int,4});
+        end
+    end
+    
+    Data_CoilNum = coil_label(:,1);
+    Data_CoilName = coil_label(:,2);
+    Noise_CoilNum = coil_label(:,3);
+    Noise_CoilName = coil_label(:,4);
+    
+    if sum(coil_flag(:,1)) ~= channels
+        disp('### WARNING ### ! Coil order mismatch! (not critical?) '); disp(' ');
+        disp(table(Data_CoilNum, Data_CoilName, Noise_CoilNum, Noise_CoilName)); disp(' ');
+    elseif sum(coil_flag(:,2)) ~= channels
+        disp('### WARNING ###  ! Coil name mismatch!'); disp(' ');
+        disp(table(Data_CoilNum, Data_CoilName, Noise_CoilNum, Noise_CoilName)); disp(' ');
+    end
+    clear Data_CoilName Data_CoilNum Noise_CoilName Noise_CoilNum;
+    
+    %%
     dmtx = ismrm_dmtx_RR(nfile, dt);
+    
 end
 
 %% Build Nominal Fully Sampled traj and gradients
@@ -621,11 +623,12 @@ if TSEf > 0
             
             %     img_tse(:,:,iTSE) = sqrt(sum(x.*conj(x),3));
             img_tse(:,:,iTSE) = abs( sum( squeeze( x ) .* ccm_roemer_optimal, 3) );
-            
-            
+            img_tse_phase(:,:,iTSE) = angle( sum( x , 3) );
             
         end
+        
         montage_RR(img_tse); implay_RR(img_tse)
+        montage_RR(img_tse_phase,[-pi pi]);
         
         % =======================
         % T2 fitting

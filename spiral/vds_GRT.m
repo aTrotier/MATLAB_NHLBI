@@ -137,7 +137,7 @@
 
 function [k,g,s,time,r,theta] = vds_GRT(smax,gmax,T,N,Fcoeff,rmax)
 
-disp('vds.m');
+% disp('vds.m');
 gamma = 4258;
 
 oversamp = 1;		% Keep this 1!
@@ -178,10 +178,10 @@ while r0 < rmax
 	time(count) = t;
     
 
-	if (rem(count,100)==0)
-		tt = sprintf('%d points, |k|=%f',count,r0);
-		disp(tt);
-	end;
+% 	if (rem(count,100)==0)
+% 		tt = sprintf('%d points, |k|=%f',count,r0);
+% 		disp(tt);
+% 	end;
 end;
 
 

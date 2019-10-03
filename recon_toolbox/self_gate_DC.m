@@ -31,13 +31,14 @@ if ischar(kspace_pw) && ischar(i_rd) % assume file names are being fed in
     data = ismrm_apply_noise_decorrelation_mtx(data, dmtx);
 else
     channels = size(kspace_pw,ndims(kspace_pw));
+    TR = 1e-3 * i_rd.sequenceParameters.TR;
     
     % take first data point
     S.subs = repmat({':'},1,ndims(kspace_pw)); % handle 2D/3D images
     S.subs{1} = 1;
     S.type = '()';
     data = subsref(kspace_pw, S);
-    
+    data = squeeze(data);
 end
 
 
@@ -98,12 +99,15 @@ if smooth_data
 end
 
 %% Fourier transform and visualise motion frequencies
-figure, clear P_out;
+figure, 
+clear P_out;
 for i = 1:channels_out
-    subplot(1,2,1); hold on;
+%     subplot(1,2,1); hold on;
+    subplot(1,4,1); hold on;
     plot(data_pca(:,i), '-', 'Color', cmp(i,:))
     
-    subplot(1,2,2); hold on;
+%     subplot(1,2,2); hold on;
+     subplot(1,4,2); hold on;
     Y = fft(data_pca);
     P2 = abs(Y/length(U));
     P1 = P2(1:(length(U))/2+1);
@@ -129,7 +133,9 @@ px = (1:length(P_out));
 px(tempf) = [];
 dyn_cardiac = smooth(data_pca(:,coil_ecg));
 
-figure, plot(dyn_cardiac, 'k-'); hold on;
+% figure, 
+subplot(1,4,3);
+plot(dyn_cardiac, 'k-'); hold on;
 d_inter = round((1/freq_ecg)/TR)+5;
 if(~mod(d_inter,2))
     d_inter = d_inter+1;
@@ -152,7 +158,7 @@ locs = locs(steady_state_inds);
     %% Bin each cardiac cycle
 rpd_y = pks; rpd_x = locs;
 
-iRRvec = [[rpd_x(1:end-1)'];rpd_x(2:end)'];
+iRRvec = [[rpd_x(1:end-1)'];rpd_x(2:end)'-1];
 
 bin_data1 = zeros(1,length(data_pca));
 
@@ -163,6 +169,7 @@ for iRR = 1:length(rpd_x)-1
     temp_vec =  1:length(RRvec);
     bin_data2 = zeros(size(temp_vec)); bin_data2(1) = 1; bin_data2(end) = cardiac_frames;
     bin_data2(2:length(RRvec)-1) =   round( temp_vec(1:end-2)*( 1.001*cardiac_frames/(length(RRvec)-1)) );
+    bin_data2
     bin_data1(RRvec) = bin_data2';
 %         plot(bin_data2);
 end
@@ -194,9 +201,9 @@ end
 dyn_resp = smooth(data_pca(:,coil_resp), d_inter);
 ave_resp = smooth(smooth(data_pca(:,coil_resp),d_inter2));
 
-figure, plot(dyn_resp, 'k-'); hold on;
-plot(ave_resp, 'r-'); plot(dyn_resp - ave_resp + median(ave_resp), 'b--')
-legend({'Smoothed RESP','Ave RESP'});
+% figure, plot(dyn_resp, 'k-'); hold on;
+% plot(ave_resp, 'r-'); plot(dyn_resp - ave_resp + median(ave_resp), 'b--')
+% legend({'Smoothed RESP','Ave RESP'});
 
 % Peaks detection
 [pks, locs] = findpeaks(dyn_resp-ave_resp, 'MinPeakDistance',round(0.75* (1/freq_resp)/TR) );
@@ -231,7 +238,9 @@ locs = locs(steady_state_inds);
     sg_info.resp_freq = freq_resp;
     sg_info.resp_chan = coil_resp;
     
-    figure, hold on, plot(sg_info.resp_binned, 'r-');   plot(sg_info.ecg_binned /(cardiac_frames/resp_phases) , 'b-');
+%     figure, 
+subplot(1,4,4);
+    hold on, plot(sg_info.resp_binned, 'r-');   plot(sg_info.ecg_binned /(cardiac_frames/resp_phases) , 'b-');
 
 %% Export pad output for 2-sets
 if i_rd.encoding.encodingLimits.set.maximum

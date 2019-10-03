@@ -42,12 +42,19 @@ for j = scanRange
         
     end
 end
-if isfield(xinfo, 'InversionTime')
+
+if exist('xinfo', 'var')
+    if isfield(xinfo, 'InversionTime')
     xinfo.InversionTime = temp;
+    end
 end
+if exist('te_vec', 'var')
 if(length(unique(te_vec))==1)
     xinfo.EchoTime = te_vec;
 end
+end
+
+% === patient info === 
 % \\\ Anonymize header
 xinfo.PatientName = '';
 xinfo.PatientBirthDate = '';
@@ -59,6 +66,7 @@ xinfo.PatientBirthDate = '';
 % xinfo.PatientWeight
 % xinfo.PatientPosition
 
+% === increase precision for calculations ===
 x = double(x);
 
 end

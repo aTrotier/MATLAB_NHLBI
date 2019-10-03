@@ -7,7 +7,38 @@ function fh = scratch_functions
 end
 
 % -------- SCRATCH ---------------
+function edit_toolbox
+edit(mfilename)
+end
+
 % Put mess here:
+function [ROI] = rroipoly(IM, numROIs)
+if nargin < 2
+    numROIs = 1;
+end
+
+numSlices = size(IM,3);
+IM = IM./mean(IM(:));
+
+ROI = zeros(size(IM));
+
+figure,
+for i = 1:numSlices
+    imshow(IM(:,:,i),[0 4]);
+    
+    for j = 1:numROIs
+        set(gcf, 'Name', ['ROI ' num2str(j) '/' num2str(numROIs) ', Slice ' num2str(i) '/' num2str(numSlices)]);
+        ROI(:,:,i) = ROI(:,:,i) + roipoly;
+        
+    end
+    hold on;
+    contour(ROI(:,:,i), 'g');
+    hold off;
+    pause(1);
+end
+
+end
+
 function plot_rois(xi,x)
 montage_RR(xi);
 hold on; 
@@ -31,6 +62,47 @@ end
 
 function [output] = get_rois(xi,x)
 output = [mean(xi(x.WM_roi)) std(xi(x.WM_roi)) mean(xi(x.GM_roi)) std(xi(x.GM_roi))];
+end
+
+function implay_flow(M,P, gif_filename)
+if ndims(M) == 4
+    M = M(:,:,:,1);
+end
+M = M./(0.5*max(M(:)));
+
+if (~isempty(P))
+P = (min(P(:))<0)*0.5 + P./(max(P(:)) - min(P(:)));
+end
+
+if (size(M,2) == size(M,1))
+    implay_RR([M P],[0 1]);
+else
+    implay_RR([M; P],[0 1]);
+end
+
+if nargin > 2
+    %     gif_filename = 'testAnimated.gif'; % Specify the output file name
+    disp(['Writing gif to ' gif_filename]);
+    for idx = 1:size(M,3)
+        if (~isempty(P))
+             if (size(M,2) == size(M,1))
+                [A,map] = rgb2ind(repmat([M(:,:,idx) P(:,:,idx)],[1 1 3]),256);
+             else
+                 [A,map] = rgb2ind(repmat([M(:,:,idx); P(:,:,idx)],[1 1 3]),256);
+             end
+            
+        else
+            [A,map] = rgb2ind(repmat([M(:,:,idx)],[1 1 3]),256);
+        end
+        %         [A] = [M(:,:,idx) P(:,:,idx)];
+        if idx == 1
+            imwrite(A,map,gif_filename,'gif','LoopCount',Inf,'DelayTime',.12); % 0.25 s
+        else
+            imwrite(A,map,gif_filename,'gif','WriteMode','append','DelayTime',.25);
+        end
+    end
+end
+
 end
 
 function R_info = RR_rot_m(R)
@@ -65,6 +137,38 @@ figure, hold on,
 
 names = {'Z';'Y';'X';'RF';'ADC'};
 set(gca,'ytick',yax_des,'yticklabel',names)
+
+end
+
+function plot_rf_spectrum(freq, coil_label)
+samples = size(freq,1);
+channels = size(freq,3);
+
+sp1 = floor(sqrt(channels));
+sp2 = ceil(channels/sp1);
+
+figure,
+for i = 1:channels
+    subplot(sp1,sp2, i);
+    shadedErrorBar(1:samples, mean(freq(:,:,i),2)', std(freq(:,:,i),[],2)');
+    if nargin > 1
+        title(coil_label(i,2), 'Interpreter', 'none');
+    end
+end
+
+end
+
+function G0_2 = maxwell_phase_grad(x, y, interleaves)
+
+grads = zeros(length(x), interleaves, 2);
+
+for i = 1:interleaves
+    rot = (i-1)*(2*pi/interleaves);
+    grads(:,i,2)  = ( x *cos(rot) + y *sin(rot));
+    grads(:,i,1)  = (-x *sin(rot) + y *cos(rot));
+end
+
+G0_2 = sum(grads.^2,1);
 
 end
 
@@ -158,6 +262,17 @@ if nargin < 1
     datPath = [datPath filesep];
 end
 
+[~, current_dir] = fileparts(datPath(1:end-1));
+header_cell{1} = ['% 20' current_dir];
+header_cell{2} = [' ' ];
+header_cell{3} = ['% save(''2019 studies\d20' current_dir '.mat'')'];
+header_cell{4} = ['% load(''2019 studies\d20' current_dir '.mat'')'];
+header_cell{5} = ['whos'];
+header_cell{6} = [' '];
+header_cell{7} = ['%%'];
+header_cell{8} = [' '];
+fprintf(1, '%s \n', header_cell{:});
+
 dir_dp = dir(datPath);
 
 study_cell = cell(length(dir_dp), 1);
@@ -170,6 +285,106 @@ for i = 1:length(dir_dp)
 end
 study_cell{1} = ['dirPath = ''' datPath 'h5' filesep ''';'];
 study_cell{2} = ['noisePath = ''' datPath 'noise' filesep ''';'];
+
+fprintf(1, '%s \n', study_cell{:});
+fprintf(1, '\n');
+
+end
+
+function grab_dicom_study(dicomPath)
+% 
+% pastes all data in to the command window
+
+if nargin < 1
+    if ismac
+        dicomPath = '/Volumes/DIRHome/';
+    else
+        dicomPath = uigetdir('\\hl-share.nhlbi.nih.gov\DIRHome\RamasawmyR\Scan Data');
+    end
+    dicomPath = [dicomPath filesep];
+else
+    if ~(regexp(dicomPath(end), filesep))
+        dicomPath = [dicomPath filesep];
+    end
+end
+
+% [fp, current_dir] = fileparts(dicomPath(1:end-1));
+% header_cell{1} = ['% 20' current_dir];
+% header_cell{2} = [' ' ];
+% header_cell{3} = ['% save(''2019 studies\d20' current_dir '.mat'')'];
+% header_cell{4} = ['% load(''2019 studies\d20' current_dir '.mat'')'];
+% header_cell{5} = ['whos'];
+% header_cell{6} = [' '];
+% header_cell{7} = ['%%'];
+% header_cell{8} = [' '];
+% fprintf(1, '%s \n', header_cell{:});
+
+dir_dp = dir(dicomPath);
+
+% first check if the dicoms have been sorted
+dir_check = [dir_dp(3:end).isdir];
+if round(mean(dir_check)) == 0
+    % dicoms need to be sorted
+    dicom_sort_folder(dicomPath);
+    
+    % now grab sorted folder
+    dir_dp = dir(dicomPath);
+    
+end
+
+%
+study_cell = cell(length(dir_dp ), 1);
+
+for i = 1:length(dir_dp)
+    temp = dir_dp(i).name;
+    study_cell{i} = ['[] = dicom_load_scan([dirPath ''' temp ''']);' ];
+    
+end
+study_cell{1} = ['dirPath = ''' dicomPath ''';'];
+study_cell{2} = [''];
+
+fprintf(1, '%s \n', study_cell{:});
+fprintf(1, '\n');
+
+end
+
+function grab_mat_study(matPath)
+% requires specific data organisation
+% pastes all data in to the command window
+
+if nargin < 1
+    if ismac
+        matPath = '/Volumes/DIRHome/';
+    else
+        matPath = uigetdir('\\hl-share.nhlbi.nih.gov\DIRHome\RamasawmyR\Scan Data');
+    end
+    matPath = [matPath filesep];
+end
+
+[fp, current_dir] = fileparts(matPath(1:end-1));
+header_cell{1} = ['% 20' current_dir];
+header_cell{2} = [' ' ];
+header_cell{3} = ['% save(''2019 studies\d20' current_dir '.mat'')'];
+header_cell{4} = ['% load(''2019 studies\d20' current_dir '.mat'')'];
+header_cell{5} = ['whos'];
+header_cell{6} = [' '];
+header_cell{7} = ['%%'];
+header_cell{8} = [' '];
+fprintf(1, '%s \n', header_cell{:});
+
+dir_dp = dir(matPath);
+
+study_cell = cell(length(dir_dp )+ 1, 1);
+
+for i = 1:length(dir_dp)
+    temp = dir_dp(i).name;
+    if regexp(temp, '.mat')
+        study_cell{i} = [['load([dirPath ''' temp ''']);'] ' ' [ 'XXX = imrec;' ] ];
+    end
+end
+study_cell{1} = ['dirPath = ''' matPath ''';'];
+study_cell{2} = [''];
+study_cell{end} = ['clear imrec'];
 
 fprintf(1, '%s \n', study_cell{:});
 fprintf(1, '\n');

@@ -9,8 +9,15 @@ iRD_s = read_h5_header(nfile);
 disp('Noise ID: ');
 disp(iRD_s.measurementInformation.measurementID);
 
-Siemens_rBW = iRD_s.acquisitionSystemInformation.relativeReceiverNoiseBandwidth;
-% Siemens_rBW = 0.79;
+% figure,
+% subplot(3,2,1); plot(1+double(noise_test.head.idx.kspace_encode_step_1)); title('kspace step 1')
+% subplot(3,2,2); plot(1+double(noise_test.head.idx.average)); title('average')
+% subplot(3,2,3); plot(1+double(noise_test.head.idx.set)); title('set')
+% subplot(3,2,4); plot(1+double(noise_test.head.idx.slice)); title('slice')
+% subplot(3,2,5); plot(1+double(noise_test.head.idx.repetition)); title('repetition')
+% subplot(3,2,6); plot(1+double(noise_test.head.active_channels)); title('Active Channels')
+
+Siemens_rBW = iRD_s.acquisitionSystemInformation.relativeReceiverNoiseBandwidth; % Siemens_rBW = 0.79;
 
 n_samples = double(noise_test.head.number_of_samples(1));
 n_channels = double(noise_test.head.active_channels(1)); 
@@ -58,34 +65,52 @@ end
 %% 3D coil scaling 
 % Don't know what to do with this... 
 % encoded/recon dimensions available in xml
-
-% noise_ind = noise_ind+1:length(noise_test.data);
-% 
-% n_samples = double(noise_test.head.number_of_samples(noise_ind(1)));
-% n_channels = double(noise_test.head.active_channels(noise_ind)); 
-% pe_tab_1 = 1+(noise_test.head.idx.kspace_encode_step_1(noise_ind));
-% pe_tab_2 = 1+(noise_test.head.idx.kspace_encode_step_2(noise_ind));
-% 
-% nt3_AC = zeros(n_samples, max(pe_tab_1), max(pe_tab_2), n_channels(1)); 
-% nt3_BC = zeros(n_samples, max(pe_tab_1), max(pe_tab_2), n_channels(2)); 
-% 
-% for i = noise_ind
-%     if noise_test.head.active_channels(i) == 2
-%         nt3_BC(:,noise_test.head.idx.kspace_encode_step_1(i)+1,noise_test.head.idx.kspace_encode_step_2(i)+1,:)= double(reshape(complex(noise_test.data{i}(1:2:end), noise_test.data{i}(2:2:end)), [n_samples 1 1 2]));
-%     else
-%         nt3_AC(:,noise_test.head.idx.kspace_encode_step_1(i)+1,noise_test.head.idx.kspace_encode_step_2(i)+1,:)= double(reshape(complex(noise_test.data{i}(1:2:end), noise_test.data{i}(2:2:end)), [n_samples 1 1 noise_test.head.active_channels(i)]));
-%     end
-% end
-% 
-% img_AC = ismrm_transform_kspace_to_image(nt3_AC);
-% img_BC = ismrm_transform_kspace_to_image(nt3_BC);
-% img_AC = sqrt(sum(img_AC.*conj(img_AC),4));
-% img_BC = sqrt(sum(img_BC.*conj(img_BC),4));
-% 
-% % montage_RR(img_AC);montage_RR(img_BC);
-% scaled_coil_image = img_AC./img_BC;
-% mask = img_AC > std(img_AC(:))+mean(img_AC(:)); montage_RR(mask)
-% montage_RR(scaled_coil_image.*mask);
+% % iRD_s.encoding.encodingLimits.kspace_encoding_step_1
+% % iRD_s.encoding.encodingLimits.kspace_encoding_step_2
+% % 
+% % iRD_s.encoding.encodedSpace.matrixSize
+% % iRD_s.encoding.encodedSpace.fieldOfView_mm
+% % iRD_s.encoding.reconSpace.fieldOfView_mm
+% % iRD_s.encoding.reconSpace.matrixSize
+% % 
+% % % printstruct(iRD_s)
+% % % R = [noise_test.head.read_dir(:,1) noise_test.head.phase_dir(:,1) noise_test.head.slice_dir(:,1)];
+% % % noise_test.head.
+% % % noise_test.head.position(:,1)
+% % % noise_test.head.patient_table_position(:,1)
+% % 
+% % noise_ind = noise_ind+1:length(noise_test.data);
+% % 
+% % n_samples = double(noise_test.head.number_of_samples(noise_ind(1)));
+% % n_channels = double(noise_test.head.active_channels(noise_ind)); 
+% % pe_tab_1 = 1+(noise_test.head.idx.kspace_encode_step_1(noise_ind));
+% % pe_tab_2 = 1+(noise_test.head.idx.kspace_encode_step_2(noise_ind));
+% % 
+% % nt3_AC = zeros(n_samples, max(pe_tab_1), max(pe_tab_2), n_channels(1)); size(nt3_AC)
+% % nt3_BC = zeros(n_samples, max(pe_tab_1), max(pe_tab_2), n_channels(2));  size(nt3_BC)
+% % 
+% % nt3_AC = zeros(n_samples, iRD_s.encoding.encodedSpace.matrixSize.y, iRD_s.encoding.encodedSpace.matrixSize.z, n_channels(1)); size(nt3_AC)
+% % nt3_BC = zeros(n_samples, iRD_s.encoding.encodedSpace.matrixSize.y, iRD_s.encoding.encodedSpace.matrixSize.z, n_channels(2)); size(nt3_BC)
+% % 
+% % 
+% % for i = noise_ind
+% %     if noise_test.head.active_channels(i) == 2
+% %         nt3_BC(:,noise_test.head.idx.kspace_encode_step_1(i)+1,noise_test.head.idx.kspace_encode_step_2(i)+1,:)= double(reshape(complex(noise_test.data{i}(1:2:end), noise_test.data{i}(2:2:end)), [n_samples 1 1 2]));
+% %     else
+% %         nt3_AC(:,noise_test.head.idx.kspace_encode_step_1(i)+1,noise_test.head.idx.kspace_encode_step_2(i)+1,:)= double(reshape(complex(noise_test.data{i}(1:2:end), noise_test.data{i}(2:2:end)), [n_samples 1 1 noise_test.head.active_channels(i)]));
+% %     end
+% % end
+% % 
+% % img_AC = ismrm_transform_kspace_to_image(nt3_AC);
+% % img_BC = ismrm_transform_kspace_to_image(nt3_BC);
+% % img_AC = sqrt(sum(img_AC.*conj(img_AC),4));
+% % img_BC = sqrt(sum(img_BC.*conj(img_BC),4));
+% % 
+% % % montage_RR(img_AC);montage_RR(img_BC);
+% % montage_RR(img_AC,[0 1]);montage_RR(img_BC,[0 1]);
+% % scaled_coil_image = img_AC./img_BC;
+% % mask = img_BC > std(img_BC(:))+mean(img_BC(:)); montage_RR(mask)
+% % montage_RR(scaled_coil_image.*mask,[0 50]);
 
 end
 

@@ -20,10 +20,42 @@ if showPlots % plot voronoi diagram
 end
 
 [x1, x2] = voronoin(traj);
-clear test_area;
+
+% patch visualisation % figure
+max_kr = max(abs(complex(traj(:,1), traj(:,2))));
+test_area = zeros(size(traj,1),1);
+
 for i = 1 : size(traj ,1)
     ind = x2{i}';
-    test_area(i,1) = polyarea( x1(ind,1), x1(ind,2));
+    
+    vec1 = [x1(ind,1), x1(ind,2)];
+    
+    % kr-limit correction
+    % combine in to complex to calc magnitude and angle 
+    comp_vec =  complex(vec1(:,1),vec1(:,2)); 
+    
+    % remove any infinite values
+    inf_i = find(isinf(comp_vec)); 
+    vec1(inf_i,:) = []; 
+    comp_vec(inf_i) = [];
+    
+    abs_v = abs(comp_vec);
+    angle_v = angle(comp_vec);
+    
+    % loop through vector of vertices and limit points larger than kr
+    for j = 1:length(abs_v)
+        if abs_v(j) > max_kr
+            [x,y] = pol2cart(angle_v(j),max_kr );
+            vec1(j,1) = x;
+            vec1(j,2) = y;
+        end
+    end
+    
+    % patch visualisation %     patch(vec1(:,1), vec1(:,2), 1);
+    
+    % calculate area of vertices - equal to density comp
+    test_area(i,1) = polyarea( vec1(:,1), vec1(:,2));
+
 end
 
 %%
@@ -157,55 +189,3 @@ end
 
 end
 
-
-
-
-%% % %RR% REFERENCE >> need to implement
-% % 
-% % function area=weight_vor(kx,ky,nl)
-% % % function area=weight_vor(kx,ky,nl)
-% % % nl is the number of interleaves
-% % % For calculating sampling density function
-% % %   for spiral trajectory
-% % %  Sangwoo Lee and Brad Sutton
-% % %   University of Michigan
-% % %
-% % % Updated for Matlab R14 9/13/05 BPS
-% % 
-% %   
-% % [V,C]=voronoin([kx,ky],{'Qbb','QJ'});
-% %  %RR% http://www.qhull.org/html/index.htm: 2D?, "joggled"?
-% % %offset = 20;
-% % offset = 10;
-% % 
-% %   area=zeros(1,length(kx));
-% %   for ii=1:length(kx)
-% %     xx=[];yy=[];s=[];
-% %     s=C{ii}(1:end);
-% %     xx=V(s,1);
-% %     yy=V(s,2);
-% %     area(ii)=polyarea(xx,yy);
-% %   end;
-% % 
-% % 
-% % 
-% % %Now fix edges
-% % %keyboard
-% % for jj = 1:nl
-% % 
-% % end_j = jj*(length(kx))/nl;
-% % 
-% %    ii = end_j;
-% %     %while (isnan(mean(area(ii-offset:ii))) | (sum(abs(area(ii-offset:ii)-mean(area(ii-offset:ii))))>(1/nl)))
-% %    while (isnan(mean(area(ii-offset:ii))) | (sum((abs(area(ii-offset:ii))>(offset*3)))))
-% %      ii = ii-10;
-% %    end
-% % 
-% %    area(ii+1:end_j) = mean(area(ii-offset:ii));
-% % 
-% % end
-% % 
-% % 
-% % area = area.';
-% % 
-% % 

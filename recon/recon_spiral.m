@@ -2,8 +2,7 @@ function [img_s] = recon_spiral(dfile,  nfile, SpiDes)
 % function [mag_RT] = recon_spiral(dfile,  nfile, SpiDes)
 % R Ramasawmy NHLBI April 2019
 % SpiDes = [VDSf <100> delayFactor <0> pseudoRep <0>]
-% i.e. archimedean spiral, no post-adc wait-time, and no pseudo-rep (not
-% yet applied here
+% i.e. archimedean spiral, no post-adc wait-time, and no pseudo-rep 
 
 %% Set up
 
@@ -133,9 +132,16 @@ FOV = iRD_s.encoding.reconSpace.fieldOfView_mm.x/10;
 
 FOV = [FOV -1*FOV*(1 - VDSf/100)]; disp(['FOV: ' num2str(FOV)])
 
-smax = 14414.4; % smax = 3669.72;
+% smax = 14414.4; % smax = 3669.72;
+% gmax = 2.4;
+
+traj_setup.gMax = iRD_s.encoding.userParameterDouble.value;
+traj_setup.sMax = iRD_s.encoding.userParameterDouble_1.value;
+
 krmax = 1/(2*(FOV(1)/matrix_size(1)));
-[k,g] = vds(smax, 2.4, dt, interleaves, FOV, krmax); close;
+
+[k,g] = vds(traj_setup.sMax, traj_setup.gMax, dt, interleaves, FOV, krmax); close;
+% [k,g] = vds(smax, gmax, dt, interleaves, FOV, krmax); close;
 
 %% Rotate 
 if samples > length(k)
@@ -175,8 +181,7 @@ trajectory_nominal = apply_GIRF(gradients_nominal, dt, sR, tRR );
 trajectory_nominal = trajectory_nominal(:,:,1:2);
 
 %% Collect all data
-
-kspace = zeros([samples interleaves pe2 averages slices contrasts phases reps sets channels]);
+kspace = complex(zeros([samples interleaves pe2 averages slices contrasts phases reps sets channels],'single'));
 % disp(['Kspace dims: ' num2str(size(kspace))])
 
 for ii = 1:length(raw_data.data)
@@ -237,7 +242,7 @@ if pseudoRep
             data_pr = squeeze(mean(data_pr,av_dim));
             data_pr = reshape(data_pr,interleaves*samples2,channels);
             
-            x = squeeze(nufft_adj(data_pr.*repmat(recon_weights,[1,channels]), recon_st));
+            x = squeeze(nufft_adj(data_pr.*repmat(recon_weights,[1,channels]), recon_st))/sqrt(prod(recon_st.Kd));
             % calculate coil combine
             csm = ismrm_estimate_csm_walsh(x);
             ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels)); % with pre-whitened
@@ -260,25 +265,33 @@ figure,
 make_dev;
 cCoil_imgs = zeros([matrix_size pe2 1 slices contrasts phases reps sets ]);
 % % timer_vec = zeros(1,slices*contrasts*phases*reps*sets); tcounter = 0;
-for slc = 1:slices
-    for coc = 1:contrasts
-        for phc = 1:phases
-            for repc = 1:reps
-                for setc = 1:sets
-% %                     tic; tcounter = tcounter + 1;
-                    data_temp = squeeze(kspace(1:samples2,:,:,1,slc,coc,phc,repc,setc,:));
-                    
-                    data_temp = reshape(data_temp,interleaves*samples2,channels);
-                    x = nufft_adj(data_temp.*repmat(recon_weights,[1,channels]), recon_st);
-                    img_coil = squeeze(x);
-                    
-                    csm = ismrm_estimate_csm_walsh( img_coil );
-                    ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels)); % with pre-whitened
-                    cCoil_imgs(:,:,1,1,slc,coc,phc,repc,setc)= abs( sum( squeeze( img_coil ) .* ccm_roemer_optimal, 3) );
-                    
-% %                     timer_vec(tcounter) = toc;
-                    
-                    imshow(dev.nrr(cCoil_imgs(:,:,1,1,slc,coc,phc,repc,setc)),[0 4]); title(['Slice ' num2str(slc) ' Contrast ' num2str(coc) ' Phase ' num2str(phc) ' Repetition ' num2str(repc) ' Set ' num2str(setc)]); drawnow;
+
+if pe2 > 1 
+    % stack of spirals recon
+    kspace = ismrm_transform_kspace_to_image(kspace, 3);
+end
+    
+for par = 1:pe2
+    for slc = 1:slices
+        for coc = 1:contrasts
+            for phc = 1:phases
+                for repc = 1:reps
+                    for setc = 1:sets
+                        % %                     tic; tcounter = tcounter + 1;
+                        data_temp = squeeze(kspace(1:samples2,:,par,1,slc,coc,phc,repc,setc,:));
+                        
+                        data_temp = reshape(data_temp,interleaves*samples2,channels);
+                        x = nufft_adj(data_temp.*repmat(recon_weights,[1,channels]), recon_st)/sqrt(prod(recon_st.Kd));
+                        img_coil = squeeze(x);
+                        
+                        csm = ismrm_estimate_csm_walsh( img_coil );
+                        ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels)); % with pre-whitened
+                        cCoil_imgs(:,:,1,1,slc,coc,phc,repc,setc)= abs( sum( squeeze( img_coil ) .* ccm_roemer_optimal, 3) );
+                        
+                        % %                     timer_vec(tcounter) = toc;
+                        
+                        imshow(dev.nrr(cCoil_imgs(:,:,1,1,slc,coc,phc,repc,setc)),[0 4]); title(['Slice ' num2str(slc) ' Contrast ' num2str(coc) ' Phase ' num2str(phc) ' Repetition ' num2str(repc) ' Set ' num2str(setc)]); drawnow;
+                    end
                 end
             end
         end
