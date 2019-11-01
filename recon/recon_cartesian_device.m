@@ -44,67 +44,92 @@ if nargin < 1
     user_opts = [];
 end
 
-if nargin < 3
-    %     user_opts default
-    user_opts.L7_only = 0;
-    user_opts.SNR_flag = 0;
-    user_opts.Subset_recon = 0;
-end
-
-if (isempty(user_opts))
+%% user_opts default:
+% need to configure to avoid overwriting input selection
+if exist('user_opts','var')
+    user_opts_in = user_opts;
+else
+    % version [1]
+    % dialogue box version
     list = {'Recon L7 only','calculate SNR','Recon subset frames'};
     [indx,tf] = listdlg('ListString',list);
     if tf == 0
-        user_opts.L7_only = 0;
-        user_opts.SNR_flag = 0;
-        user_opts.Subset_recon = 0;
+        user_opts_in.L7_only = 0;
+        user_opts_in.SNR_flag = 0;
+        user_opts_in.Subset_recon = 0;
     else
-        user_opts.L7_only = sum(ismember(indx,1));
-        user_opts.SNR_flag = sum(ismember(indx,2));
-        user_opts.Subset_recon = sum(ismember(indx,3));
+        user_opts_in.L7_only = sum(ismember(indx,1));
+        user_opts_in.SNR_flag = sum(ismember(indx,2));
+        user_opts_in.Subset_recon = sum(ismember(indx,3));
     end
-else
-    % needs user_opts overwrite option here
-end
-
-%% Read data file
-df = dir(file);
-file_size = round(df.bytes/1e6); % MB
-[userview, system] = memory;
-sysmem = round(system.PhysicalMemory.Available/1e6); %MB
-% sysmem = round(system.SystemMemory.Total/1e6); %MB
-
-if file_size/10 > sysmem
-    error(['File-size ' num2str(file_size) 'MB is going to push available memory: ' num2str(sysmem) 'MB.' ]);
     
+    % version [2]
+    %     user_opts_in = struct();
 end
-if file_size*3/10 > sysmem
-    warning(['File-size ' num2str(file_size) 'MB is going to push available memory: ' num2str(sysmem) 'MB.' ]);
-    %error?
-    disp('Segmented reconstruction activated');
-    % can increase chunk steps here
+user_opts_in_list = fieldnames(user_opts_in);
+
+%     user_opts default
+user_opts.L7_only = 0;
+user_opts.SNR_flag = 0;
+user_opts.Subset_recon = 0;
+
+% === update user_opts with input data === 
+for i = 1:length(user_opts_in_list)
+    if isfield(user_opts, user_opts_in_list{i})
+        user_opts.(matlab.lang.makeValidName(user_opts_in_list{i})) = user_opts_in.(matlab.lang.makeValidName(user_opts_in_list{i}));
+    end
 end
-clear userview system file_size df;
 
-% % chunk the data loading
-file_info=h5info(file);
-data_length = file_info.Groups.Datasets(1).Dataspace.Size; clear file_info;
-
+%% Header information
 ismrmrd_s = read_h5_header(file); disp(' ');disp('### Protocol Name ###');disp(ismrmrd_s.measurementInformation.protocolName);disp(' ');
 img_s.timestamp = datetime(now, 'ConvertFrom', 'datenum');
 
-%% == scout the number of repetitions ==
-scout_steps = 5 * ismrmrd_s.encoding.encodingLimits.kspace_encoding_step_1.maximum * ismrmrd_s.encoding.encodingLimits.slice.maximum;
-if scout_steps > data_length; scout_steps = data_length; end;
-raw_data_scout = h5read(file, '/dataset/data', 1, scout_steps);
 
-rep_step = mean(diff(find(diff(single(raw_data_scout.head.idx.repetition))))) + 1;
-slice_step = mean(diff(find(diff(single(raw_data_scout.head.idx.slice))))) + 1;
-steps_per_scan = min([rep_step slice_step]); clear rep_step slice_step
-if rem(data_length,steps_per_scan) > 0
-    disp('Scan stopped before end of last acquisition, not reconstructing this one');
+%% Scout the data-loading 
+
+if user_opts.Subset_recon == 0
+    raw_data_scout = h5read(file, '/dataset/data');
+    
+else
+    %% Read data file
+    df = dir(file);
+    file_size = round(df.bytes/1e6); % MB
+    [userview, system] = memory;
+    sysmem = round(system.PhysicalMemory.Available/1e6); %MB
+    % sysmem = round(system.SystemMemory.Total/1e6); %MB
+    
+    if file_size/10 > sysmem
+        error(['File-size ' num2str(file_size) 'MB is going to push available memory: ' num2str(sysmem) 'MB.' ]);
+        
+    end
+    if file_size*3/10 > sysmem
+        warning(['File-size ' num2str(file_size) 'MB is going to push available memory: ' num2str(sysmem) 'MB.' ]);
+        %error?
+        disp('Segmented reconstruction activated');
+        % can increase chunk steps here
+    end
+    clear userview system file_size df;
+    
+    % % chunk the data loading
+    file_info=h5info(file);
+    data_length = file_info.Groups.Datasets(1).Dataspace.Size; clear file_info;
+    
+    
+    
+    %% == scout the number of repetitions ==
+    scout_steps = 5 * ismrmrd_s.encoding.encodingLimits.kspace_encoding_step_1.maximum * ismrmrd_s.encoding.encodingLimits.slice.maximum;
+    if scout_steps > data_length; scout_steps = data_length; end;
+    raw_data_scout = h5read(file, '/dataset/data', 1, scout_steps);
+    
+    rep_step = mean(diff(find(diff(single(raw_data_scout.head.idx.repetition))))) + 1;
+    slice_step = mean(diff(find(diff(single(raw_data_scout.head.idx.slice))))) + 1;
+    steps_per_scan = min([rep_step slice_step]); clear rep_step slice_step
+    if rem(data_length,steps_per_scan) > 0
+        disp('Scan stopped before end of last acquisition, not reconstructing this one');
+    end
+    num_scans = floor(data_length/steps_per_scan);
 end
-num_scans = floor(data_length/steps_per_scan);
+
 
 %% Extract header info
 
@@ -119,7 +144,13 @@ pe1 = ismrmrd_s.encoding.reconSpace.matrixSize.y;
 pe2 = ismrmrd_s.encoding.reconSpace.matrixSize.z;
 
 % defaults to max set reps % reps = ismrmrd_s.encoding.encodingLimits.repetition.maximum; % reps = double(max(raw_data.head.idx.repetition)+1);
-raw_data_scout = h5read(file, '/dataset/data', steps_per_scan*num_scans, 1);
+if user_opts.Subset_recon == 0
+    raw_data_scout = h5read(file, '/dataset/data');
+    num_scans = length(raw_data_scout.data);
+else
+    raw_data_scout = h5read(file, '/dataset/data', steps_per_scan*num_scans, 1);
+end
+
 reps        = double(max(raw_data_scout.head.idx.repetition)+1);
 slices      = 1 + ismrmrd_s.encoding.encodingLimits.slice.maximum; % slices = double(max(raw_data.head.idx.slice))+1;
 averages    = 1 + ismrmrd_s.encoding.encodingLimits.average.maximum; % averages = double(max(raw_data_scout.head.idx.average))+1;
@@ -254,13 +285,15 @@ if user_opts.Subset_recon == 1
 else
     % partition large datasets (>25 reps) in to ten chunks
     
-    if num_scans > 25
-        chunk_step = round(linspace(0, num_scans, 11));
-        chunk_step(2:end) = chunk_step(2:end)*steps_per_scan;
-    else
-        chunk_step = round(linspace(1, num_scans, 2));
-    end
+%     if num_scans > 25
+%         chunk_step = round(linspace(0, num_scans, 11));
+%         chunk_step(2:end) = chunk_step(2:end)*steps_per_scan;
+%     else
+%         chunk_step = round(linspace(0, num_scans, 2));
+%     end
+    chunk_step = [0 num_scans];
     
+
 end
 
 %% Chunked data loading & recon
@@ -303,7 +336,9 @@ for iCS = 1:length(chunk_step)-1
         d3 = reshape(d2, samples, channels); %  RE & IM (2)
         
         %         d3 = ismrm_apply_noise_decorrelation_mtx(d3, dmtx);
+        if ~isempty(image_channels) % what is going on here...
         d3(:,image_channels) = ismrm_apply_noise_decorrelation_mtx(d3(:,image_channels),dmtx_imaging);
+        end
         
         if length(L7_channel)>1
             d3(:,L7_channel) = ismrm_apply_noise_decorrelation_mtx(d3(:,L7_channel),dmtx_L7);
@@ -383,6 +418,14 @@ for iCS = 1:length(chunk_step)-1
     end
 end
 
+if user_opts.SNR_flag
+    if user_opts.SNR_flag > reps
+        user_opts.SNR_flag = reps;
+        warning(['Setting repition to calculate SNR to ' num2str(reps)]);
+    end
+    snr = device_pseudoreps(kspace(:,:,1,reps,:)); % hard-code first-slice
+end
+
 %% remove OS
 
 OverSampling = ismrmrd_s.encoding.encodedSpace.fieldOfView_mm.x./ismrmrd_s.encoding.reconSpace.fieldOfView_mm.x;
@@ -456,6 +499,9 @@ end
 if acc_factor(1) > 1
     img_s.L7_imgs_g     = squeeze(L7_imgs_g);
 end
+if user_opts.SNR_flag
+    img_s.snr= snr;
+end
 
 img_s.L7_imgs       = squeeze(L7_imgs);
 img_s.header        = ismrmrd_s;
@@ -511,47 +557,51 @@ else
     noise = nt2(:,:,L7_channel);
     noise = reshape(noise, 1, prod(size(noise)));
     dmtx_L7 = (1./(length(noise)-1))*(noise*noise');
-    dmtx_L7 = 1./(sqrt(dmtx_L7));
+    dmtx_L7 = 1./(sqrt(
+    ));
     dmtx_L7 = dmtx_L7*sqrt(2)*sqrt(n_scaling);
     
 end
 
 end
 
-function [out] = ismrm_apply_noise_decorrelation_mtx_device(in, dmtx)
-
-end
-
-function snr = cartesian_pseudoreps(crt_k)
+function snr = device_pseudoreps(crt_k)
 % SNR_s = cartesian_psuedoreps(crt_k, slice)
-% Expects pre-whitened 2D k-space data [RO,PE,AV,COILS]
+% Expects pre-whitened 2D k-space data [RO,PE,COILS]
 % This can be expanded to generic dimensions, but will require header info
 % on dimension - better used as a subfunction within recon_cartesian
 % R Ramasawmy NHLBI 2019
 
-if length(size(crt_k)) == 3
-    crt_k = reshape(crt_k,[size(crt_k,1) size(crt_k,2) 1 size(crt_k,3)]);
+if ndims(crt_k) == 2
+    % single channel coil image
+    ncoils = 1;
+elseif ndims(crt_k) == 3
+    % multi-channel coil image
+    ncoils = size(crt_k,ndims(crt_k));
 end
-% size(crt_k)
-av_dim = 3;
 
 pseudo_reps = 100;
 disp(['Running ' num2str(pseudo_reps) ' pseudo-reps']);
 
 % estimate csm from data
-ncoils = size(crt_k,ndims(crt_k));
+if ncoils > 1
 img = ismrm_transform_kspace_to_image(squeeze(mean(crt_k,av_dim)),[1 2]); % montage_RR(abs(img));figure, imshow(sqrt(sum(img.*conj(img),3)),[])
 csm = ismrm_estimate_csm_walsh(img); % montage_RR((csm));
 % calculate coil combine
 ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(ncoils)); % with pre-whitened
+end
 
 img_pr = zeros(size(crt_k,1), size(crt_k,2), pseudo_reps);
 for i = 1:pseudo_reps
     data_pr = crt_k + complex(randn(size(crt_k)),randn(size(crt_k)));
-    data_pr = squeeze(mean(data_pr,av_dim));
+
     x = ismrm_transform_kspace_to_image(data_pr,[1 2]);
     %     img_pr(:,:,i) = sqrt(sum(x.*conj(x),3)); % NO!
-    img_pr(:,:,i) = abs(sum(x .* ccm_roemer_optimal, 3));
+    if ncoils > 1
+        img_pr(:,:,i) = abs(sum(x .* ccm_roemer_optimal, 3));
+    else
+        img_pr(:,:,i) = abs(x .* conj(x));
+    end
 end
 
 % img_pr_orig = img_pr;
@@ -561,9 +611,9 @@ g = std(abs(img_pr + max(abs(img_pr(:)))),[],3); %Measure variation, but add off
 g(g < eps) = 1;
 snr = mean(img_pr,3)./g;
 %
-% figure,
-% subplot(1,2,1); imshow(snr,[0 50]); colorbar; colormap('parula')
-% subplot(1,2,2); imshow(std(img_pr,[],3),[]); colorbar; colormap('parula')
+ figure,
+ subplot(1,2,1); imshow(snr,[0 4*mean(snr(:))]); colorbar; colormap('parula'); title('SNR');
+ subplot(1,2,2); imshow(g,[0 2]); colorbar; colormap('parula'); title('g-factor');
 %
 % SNR_s.img_pr = img_pr;
 % SNR_s.snr = snr;

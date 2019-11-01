@@ -337,7 +337,7 @@ study_cell = cell(length(dir_dp ), 1);
 
 for i = 1:length(dir_dp)
     temp = dir_dp(i).name;
-    study_cell{i} = ['[] = dicom_load_scan([dirPath ''' temp ''']);' ];
+    study_cell{i} = ['[s' temp ', info_' temp '] = dicom_load_scan([dirPath ''' temp ''']);' ];
     
 end
 study_cell{1} = ['dirPath = ''' dicomPath ''';'];

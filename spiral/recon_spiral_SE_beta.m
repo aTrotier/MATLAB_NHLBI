@@ -36,7 +36,7 @@ else
 end
 
 temp = raw_data.head.user_float(:,1);
-VDSf = temp(6);
+VDSf = 100;%temp(6);
 
 matrix = iRD_s.encoding.reconSpace.matrixSize.x;
 

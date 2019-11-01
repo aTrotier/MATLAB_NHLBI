@@ -57,7 +57,7 @@ header.im_header = im_header;
 if (samples < ismrmrd_s.encoding.encodedSpace.matrixSize.x); disp('Asymmetric Echo'); end;
 % disp(['BW: ' num2str(dt)])
 
-IM_R = [raw_data.head.read_dir(:,1), raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ]
+IM_R = [raw_data.head.read_dir(:,1), raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ];
  
 disp(' ');disp('### Acquisition Dimensions ###');disp(' ');
 header_info = {'Encoded_Res','Encoded_FOV','Recon_Res','Recon_FOV'}';
@@ -118,17 +118,19 @@ end
 disp(' ');
 
 %% Recon
-
 % navigator extract
 % 
-acq_frames = find(single(raw_data.head.number_of_samples) == ismrmrd_s.encoding.encodedSpace.matrixSize.x);
+% acq_frames = find(single(raw_data.head.number_of_samples) == ismrmrd_s.encoding.encodedSpace.matrixSize.x);
+acq_frames = (1:length(raw_data.data))';
 
-if(length(unique(double(raw_data.head.number_of_samples))) > 1)
+if ismrmrd_s.encoding.parallelImaging.accelerationFactor.kspace_encoding_step_1 > 1 %(length(unique(double(raw_data.head.number_of_samples))) > 1)
     % non-uniform sample number (grappa reference lines?)
-    error('GRAPPA recon needed')
+    warning('GRAPPA recon needed')
+    samples = mode(double(raw_data.head.number_of_samples));
+    echo_vec = 1:samples;
     
-else
-        
+end
+    
     kspace = complex(zeros([ismrmrd_s.encoding.encodedSpace.matrixSize.x pe1 pe2 averages slices contrasts phases reps sets channels],'single'));
     % disp(['Kspace dims: ' num2str(size(kspace))])
     
@@ -154,7 +156,7 @@ else
             :) = d3;
         
     end
-end
+
 
 %% SNR
 if nargin < 3
@@ -194,8 +196,39 @@ if pe2 == 1
     cCoil_imgs = ismrm_transform_kspace_to_image(kspace, [1 2]);    
 else
     % 3D
-    cCoil_imgs = ismrm_transform_kspace_to_image(kspace, [1 2]);
+    cCoil_imgs = ismrm_transform_kspace_to_image(kspace, [1 2 3]);
 end
+ 
+% if ismrmrd_s.encoding.parallelImaging.accelerationFactor.kspace_encoding_step_1 > 1
+%     cCoil_imgs_wrapped = cCoil_imgs; clear cCoil_imgs;
+%     
+%     disp(['PAT factor: ' num2str(ismrmrd_s.encoding.parallelImaging.accelerationFactor.kspace_encoding_step_1) ' -- GRAPPA type: ' ismrmrd_s.encoding.parallelImaging.calibrationMode]) %, ' -- num reference lines: '  num2str(ismrmrd_s.userParameters.userParameterLong.value) ])
+%         %         ismrmrd_s.userParameters.userParameterLong_3.name
+%         %          ismrmrd_s.userParameters.userParameterLong_3.value
+%         
+%         % detect which lines are reference embedded:
+%         sampling_pattern = squeeze(kspace(:,:,:,1,1,1,1,1,1,1));
+%         sampling_pattern = abs(sampling_pattern) > 0;  %
+%         %         figure, imshow(sampling_pattern,[])
+%         
+%         sampling_pattern_1 = sampling_pattern(1,:);
+%         acc = ismrmrd_s.encoding.parallelImaging.accelerationFactor.kspace_encoding_step_1;
+%         
+%         temp0 = find(sampling_pattern_1);
+%         temp1 = diff(temp0);
+%         temp2 = temp0(find(temp1==1));
+%         sampling_pattern = single(sampling_pattern);
+%         
+%         sampling_pattern(:,temp2) = sampling_pattern(:,temp2)*3;
+%                    
+%         % === GRAPPA recon  === >> 
+%         for iSet = 1:sets
+%                 
+%                 cCoil_imgs(:,:,:,:,:,:,:,:,iSet) = ismrm_cartesian_GRAPPA(squeeze( kspace(:,:,:,:,:,:,:,:,iSet,:)),sampling_pattern, acc);
+%         end
+%         
+%         % === GRAPPA recon  === << 
+% end
 
 % asym_e = 0; % RR override for laziness..
 % cCoil_imgs = zeros(size(kspace));
@@ -250,7 +283,7 @@ if OverSampling == 2
 end
 
 %% Roemer coil combination "slice-by-slice"
-
+% if ismrmrd_s.encoding.parallelImaging.accelerationFactor.kspace_encoding_step_1 == 1
 dims = size(cCoil_imgs);
 CCM_img =  zeros(dims(1:end-1));
 for par = 1:pe2
@@ -271,6 +304,9 @@ for par = 1:pe2
         end
     end
 end
+% else
+%     CCM_img = cCoil_imgs;
+% end
 
 % Sum-of-Squares coil combine
 % SOS_img = squeeze(sqrt(sum(cCoil_imgs.*conj(cCoil_imgs),length(size(cCoil_imgs)) )));

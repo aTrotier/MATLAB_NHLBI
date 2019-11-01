@@ -381,24 +381,54 @@ end
 
 end
 
-function [macString] = RR_run_on_mac(pcString)
-% PC test case
-% testa = '\\hl-share.nhlbi.nih.gov\dirhome\RamasawmyR\Scan Data\2016\160607\h5\R2_pSpiral_Flow_venc100_Constant125_s8x1_fa10_shimv.h5'
-% MAC test case
-% testb = '/Volumes/DIRHome/RamasawmyR/Scan Data/2016/160607/h5/R2_pSpiral_Flow_venc100_Constant125_s8x1_fa10_shimv.h5'
+function [sysString] = run_path_on_sys(sysString)
+% % PC test case
+%  testa = '\\hl-share.nhlbi.nih.gov\dirhome\RamasawmyR\Scan Data\2016\160607\h5\R2_pSpiral_Flow_venc100_Constant125_s8x1_fa10_shimv.h5'
+% % MAC test case
+%  testb = '/Volumes/DIRHome/RamasawmyR/Scan Data/2016/160607/h5/R2_pSpiral_Flow_venc100_Constant125_s8x1_fa10_shimv.h5'
+% % LINUX test case
+% testc = '/home/ramasawmyr/dirhome/Scan Data/2016/160607/h5/R2_pSpiral_Flow_venc100_Constant125_s8x1_fa10_shimv.h5'
 
 if isunix
-    if(isempty(regexp(pcString, 'Volumes', 'once'))) % I cant remember what this step is for..
-        catString_i = regexpi(pcString, 'dirhome');
-        temp = pcString(catString_i:end);
+    if ismac
+    % MAC OPERATION
+    
+    if(isempty(regexp(sysString, 'Volumes', 'once'))) % Are we already in the right format?
+        catString_i = regexpi(sysString, 'dirhome');
+        temp = sysString(catString_i:end);
         temp(regexp(temp, '\')) = '/';
-        macString = lower(['/Volumes/' temp]); % mac is case-independent
+        sysString = lower(['/Volumes/' temp]); % mac is case-independent
+    
+    end
+    
     else
-        % assume string is already in mac format
+        % LINUX/UBUNTU OPERATION
+        
+        % Configured for Ramasawmy's "home" mount:
+        % sudo -t cifs //hl-share.nhlbi.nih.gov/DIRHome/RamasawmyR ~/dirhome/ -o username=ramasawmyr,domain=NIH
+        % THIS WILL NEED TO BE GENERICALLY CONFIGURED!
+        
+        if(isempty(regexp(sysString, '/home/ramasawmyr/dirhome/', 'once'))) % Are we already in the right format?
+        
+        catString_i = regexpi(sysString, 'scan data');
+        temp = sysString(catString_i:end);
+        temp(regexp(temp, '\')) = '/';
+        sysString = lower(['/home/ramasawmyr/dirhome/' temp]); % case-independent?
+
+        end
     end
 else
-    macString = pcString;
+    % PC OPERATION
+   
+%      if(isempty(regexp(sysString, '\\hl-share.nhlbi.nih.gov', 'once'))) % Are we already in the right format?
+%         catString_i = regexpi(sysString, 'dirhome');
+%         temp = sysString(catString_i:end);
+%         temp(regexp(temp, '/')) = '\';
+%         sysString = lower(['\\hl-share.nhlbi.nih.gov\' temp]); % case-independent
+%     
+%     end
 end
+
 
 end
 
@@ -420,8 +450,8 @@ else
     n_channels = double(noise_test.head.active_channels(1));
     
     % assuming Siemens using 2 averages:
-    noise_ind = find(noise_test.head.idx.average==1, 1, 'last');
-    
+%     noise_ind = find(noise_test.head.idx.average==1, 1, 'last');
+    noise_ind = 256;
     nt2 = zeros(n_samples, noise_ind, n_channels);
     for i = 1:noise_ind
         nt2(:,i,:)=  double(reshape(complex(noise_test.data{i}(1:2:end), noise_test.data{i}(2:2:end)), [n_samples, 1, n_channels ]));
@@ -430,6 +460,37 @@ else
     n_scaling = Siemens_rBW * data_samp_time / (noise_test.head.sample_time_us(1)*1e-6);
     dmtx = ismrm_calculate_noise_decorrelation_mtx(nt2, n_scaling ); % figure,imagesc(abs(dmtx));
     
+end
+
+end
+
+function parpool_setup(requested_pp)
+if nargin < 1
+    % default pool num
+    requested_pp = 16;
+end
+
+% check current instances
+gcp_info = gcp('NoCreate');
+
+% limit num workers to allowed number
+pc_info = parcluster('local');
+max_pp = pc_info.NumWorkers;
+if requested_pp > max_pp; requested_pp = max_pp; end
+
+% set-up parallel pool
+if isempty(gcp_info.isvalid)
+    
+    parpool('local', requested_pp);
+    
+% else % <optional>
+    %     % boost the number of workers if necessary
+    %     numw = gcp_info.NumWorkers;
+    %
+    %     if numw < requested_pp
+    %         delete(gcp('nocreate'));
+    %         parpool('local', requested_pp);
+    %     end
 end
 
 end

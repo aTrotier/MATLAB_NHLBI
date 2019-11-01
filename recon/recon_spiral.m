@@ -268,7 +268,9 @@ cCoil_imgs = zeros([matrix_size pe2 1 slices contrasts phases reps sets ]);
 
 if pe2 > 1 
     % stack of spirals recon
-    kspace = ismrm_transform_kspace_to_image(kspace, 3);
+%     kspace = ismrm_transform_kspace_to_image(kspace, 3);
+    kspace = fftshift( ifft( ifftshift(kspace), pe2, 3) );
+
 end
     
 for par = 1:pe2
@@ -286,11 +288,31 @@ for par = 1:pe2
                         
                         csm = ismrm_estimate_csm_walsh( img_coil );
                         ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels)); % with pre-whitened
-                        cCoil_imgs(:,:,1,1,slc,coc,phc,repc,setc)= abs( sum( squeeze( img_coil ) .* ccm_roemer_optimal, 3) );
+                        cCoil_imgs(:,:,par,1,slc,coc,phc,repc,setc)= abs( sum( squeeze( img_coil ) .* ccm_roemer_optimal, 3) );
                         
                         % %                     timer_vec(tcounter) = toc;
                         
-                        imshow(dev.nrr(cCoil_imgs(:,:,1,1,slc,coc,phc,repc,setc)),[0 4]); title(['Slice ' num2str(slc) ' Contrast ' num2str(coc) ' Phase ' num2str(phc) ' Repetition ' num2str(repc) ' Set ' num2str(setc)]); drawnow;
+                        imshow(dev.nrr(cCoil_imgs(:,:,par,1,slc,coc,phc,repc,setc)),[0 4]); 
+                        drawstring = [];
+                        if pe2 > 1
+                            drawstring = [drawstring 'Slice ' num2str(par) ' '];
+                        end
+                        if slices > 1
+                            drawstring = [drawstring 'Slice ' num2str(slc) ' '];
+                        end
+                        if contrasts > 1
+                            drawstring = [drawstring 'Contrast ' num2str(coc) ' '];
+                        end
+                        if phases > 1
+                            drawstring = [drawstring 'Phase ' num2str(phc) ' '];
+                        end
+                        if reps > 1
+                            drawstring = [drawstring 'Repetition ' num2str(repc) ' '];
+                        end
+                        if sets > 1
+                            drawstring = [drawstring 'Set ' num2str(setc) ' '];
+                        end
+                        title(drawstring); drawnow;
                     end
                 end
             end
@@ -299,13 +321,12 @@ for par = 1:pe2
 end
 
 % % disp(['Average spiral recon time: ' num2str(mean(timer_vec)) ' seconds.']);
-imgs = squeeze(cCoil_imgs);
+imgs = squeeze(cCoil_imgs); close; 
 % montage_RR(imgs);
 
 %% return components
 img_s.imgs = imgs;
 img_s.header = iRD_s;
-
 
 
 end

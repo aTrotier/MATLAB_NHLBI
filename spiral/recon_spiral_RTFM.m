@@ -8,6 +8,8 @@ function [RTFM_output] = recon_spiral_RTFM(dfile, nfile, user_opts)
 make_nhlbi_toolbox;
 make_dev;
 
+dfile = nhlbi_toolbox.run_path_on_sys(dfile);
+nfile = nhlbi_toolbox.run_path_on_sys(nfile);
 
 %% Grab XML header
 iRD_s = nhlbi_toolbox.h5read_xml(dfile);
@@ -448,21 +450,46 @@ user_opts.csm = csm_recon(raw_data, data_store, trajectory, gradients_nominal, s
                 sample_window = bin_data{ user_opts.SNR };
                 
                 pseudo_reps = 100; disp(['Running ' num2str(pseudo_reps) ' pseudo-reps']);
+%                 disp('--normal loop--');
+%                 tic
+%                 img_pr = zeros([matrix_size pseudo_reps sets]);
+%                 %
+%                 for i = 1:pseudo_reps
+% %                     RR_loop_count(i,pseudo_reps);
+%                     img_pr(:,:,i,:) = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
+%                 end
+%                 toc
+%                 
+                
+%                 img_pr = abs(img_pr(:,:,:,1));
+%                 
+%                 g = std(abs(img_pr + max(abs(img_pr(:)))),[],3); %Measure variation, but add offset to create "high snr condition"
+%                 g(g < eps) = 1;
+%                 RB_ECG.SNR = mean(img_pr,3)./g;
+% %                 figure, imagesc(RB_ECG.SNR,[0 50]);
+%                 user_opts.snr_1=RB_ECG.SNR ;
+
+                img_pr2= cell(1,pseudo_reps);
+                nhlbi_toolbox.parpool_setup(24);
+                
+                parfor i = 1:pseudo_reps
+                    img_pr2{i} = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
+                    
+                end
                 
                 img_pr = zeros([matrix_size pseudo_reps sets]);
-                
                 for i = 1:pseudo_reps
-                    RR_loop_count(i,pseudo_reps);
-                    img_pr(:,:,i,:) = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
+                    img_pr(:,:,i,:) = img_pr2{i};
                 end
+%                 toc
                 
                 img_pr = abs(img_pr(:,:,:,1));
                 
                 g = std(abs(img_pr + max(abs(img_pr(:)))),[],3); %Measure variation, but add offset to create "high snr condition"
                 g(g < eps) = 1;
-                RB_ECG.SNR = mean(img_pr,3)./g; 
-                figure, imagesc(RB_ECG.SNR,[0 50]); 
-                
+                RB_ECG.SNR = mean(img_pr,3)./g;
+%                 figure, imagesc(RB_ECG.SNR,[0 50]);
+%                 user_opts.snr_2=RB_ECG.SNR ;
             else
                 RB_ECG.MAG = zeros([matrix_size user_opts.number_cardiac_frames sets]);
                 if sets > 1

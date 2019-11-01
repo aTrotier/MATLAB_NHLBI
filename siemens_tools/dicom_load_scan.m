@@ -58,8 +58,11 @@ end
 % \\\ Anonymize header
 xinfo.PatientName = '';
 xinfo.PatientBirthDate = '';
+xinfo.PatientID = '';
+xinfo.Filename = '';
+xinfo.InstitutionAddress = '';
+xinfo.ReferringPhysicianName = '';
 % \\\ Keeping this data;
-% xinfo.PatientID
 % xinfo.PatientSex
 % xinfo.PatientAge
 % xinfo.PatientSize

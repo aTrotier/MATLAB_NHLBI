@@ -38,6 +38,7 @@ end
 user_opts_in_list = fieldnames(user_opts_in);
 
 % Future work: toggle recons
+user_opts.bin = 0;
 user_opts.SNR = 0;
 user_opts.GRAPPA = 0;
 user_opts.GRAPPA_ref_dfile = ''; % uigetfile?
@@ -46,6 +47,7 @@ user_opts.GRAPPA_ref_dfile = ''; % uigetfile?
 % user_opts.traj_file = 'meas_MID00221_FID16805_VDSFLMEASVE_24x48_192m_20190531.mat'; 
 % user_opts.gridReadHigh = 1231;
 user_opts.traj_file = 'meas_MID00279_FID37048_VDSFLMEASVE_m256_fov300_s48.mat'; 
+user_opts.gridReadLow = 20;
 user_opts.gridReadHigh = 2155; % end-of-spiral
 % user_opts.gridReadHigh = 2632; % rewinder-included
 % user_opts.GRAPPA_Xall_file = []; 
@@ -157,7 +159,7 @@ kspace = permute(kspace, [1 2 4 3]);
 
 %% Load traj and crop 
  
-gridReadLow = 20;
+gridReadLow = user_opts.gridReadLow;
 gridReadHigh = user_opts.gridReadHigh;
 
 disp(['Loading ' user_opts.traj_file])
@@ -215,6 +217,81 @@ if user_opts.GRAPPA == 0
         
         x = nufft_adj(kspace(:,:,f).*repmat(wi,[1,nc]),st);
         imrec(:,:,f) = sqrt(sum(x.*conj(x),3));
+    end
+    
+    if user_opts.bin == 1
+        [bin_data, RTFM_output.NominalInterval] = physio_Binning(raw_data.head.physiology_time_stamp, 30); % figure, plot(raw_data.head.physiology_time_stamp(1,:), 'r-');
+        
+        if RTFM_output.NominalInterval == 0
+            warning('No ECG trace!'); % and continue
+            
+        else
+            kspace = reshape(kspace,[nr ns nc nframes]);
+            kspace = permute(kspace, [1 2 4 3]);
+            bin_temp = zeros([matrix_size length(bin_data)]);
+            
+            % ==
+            
+            csm_data = squeeze(mean(kspace, 3));
+            csm_data = reshape(csm_data, [nr*ns, nc]);
+            x = nufft_adj(csm_data.*repmat(wi,[1,nc]),st);
+            csm  = ismrm_estimate_csm_mckenzie(squeeze(x)); % montage_RR(abs(csm));
+            
+            kspace = reshape(kspace, [nr ns*nframes nc]);
+            
+            
+            % ==
+            
+            for i = 1:length(bin_data)
+                RR_loop_count(i, length(bin_data));
+                sample_window = bin_data{i};
+                
+                % Set-up plan
+                
+                xi = raw_data.head.idx.kspace_encode_step_1(sample_window)+1;
+                data = kspace(:,sample_window,:);
+                
+                data2 = zeros(nr, ns, nc);
+                
+                for j = 1:ns
+                    nnn = length(find(xi==j));
+                    xitemp(j) = nnn;
+                    data2(:,j,:) = mean(data(:,xi==j,:),2);
+                end
+                xi = find(xitemp);
+                data = data2(:,xi,:);
+                
+                data = reshape(data,length(xi)*nr,channels);
+                
+                kx = kxall(:,xi)./max(kxall(:)).*matrix_size(1)/2;
+                ky = kyall(:,xi)./max(kyall(:)).*matrix_size(2)/2;
+                ksp = [kx(:) ky(:)];
+                ksp = ksp./fov;
+                mask = true(matrix_size(1),matrix_size(2));
+                sizeMask = size(mask);
+                nufft_args = {sizeMask, [6 6], 2*sizeMask, sizeMask/2, 'table', 2^12, 'minmax:kb'};
+                G = Gmri(ksp, mask, 'fov', fov, 'basis', {'dirac'}, 'nufft', nufft_args);
+                wi = abs(mri_density_comp(ksp, 'pipe','G',G.arg.Gnufft));
+                
+                % Prepare NUFFT operator
+                clear traj;
+                traj(:,:,1) = kxall(:,xi);
+                traj(:,:,2) = kyall(:,xi);
+                traj = reshape(traj,nr*length(xi),2);
+                traj = traj*(pi/max(traj(:)));
+                st = nufft_init(traj, matrix_size, [6 6], matrix_size.*2, matrix_size./2);
+               
+%                 xg = nufft_adj(data.*repmat(wi,[1,channels]), st);
+                
+                I = ones(matrix_size(1)); D = repmat(wi, [1 channels]);
+                x = cg_RR(data(:), st, I, D, csm, wi, 3);
+                
+                [bin_temp(:,:,i)] = sqrt(sum(x.*conj(x),3));
+            end
+            
+            RTFM_output.bin_imrec = bin_temp;
+        end
+        
     end
     
 else % GRAPPA == 1
