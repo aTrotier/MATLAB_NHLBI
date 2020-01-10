@@ -286,6 +286,7 @@ end
 % if ismrmrd_s.encoding.parallelImaging.accelerationFactor.kspace_encoding_step_1 == 1
 dims = size(cCoil_imgs);
 CCM_img =  zeros(dims(1:end-1));
+CCM_imgc =  zeros(dims(1:end-1));
 for par = 1:pe2
     for slc = 1:slices
         for coc = 1:contrasts
@@ -297,7 +298,7 @@ for par = 1:pe2
                         csm = ismrm_estimate_csm_walsh( squeeze( temp ) );
                         ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels)); % with pre-whitened
                         CCM_img(:,:,par,1,slc,coc,phc,repc,setc) = abs( sum( squeeze( temp ) .* ccm_roemer_optimal, 3) );
-                        
+                        CCM_imgc(:,:,par,1,slc,coc,phc,repc,setc) = angle( sum( squeeze( temp ) , 3) );
                     end
                 end
             end
@@ -456,6 +457,10 @@ img = squeeze(CCM_img);
 
 new_dims = size(img);
 montage_RR(reshape(img, [new_dims(1) new_dims(2) prod(new_dims)/(new_dims(1)*new_dims(2))]));
+
+% imgc = squeeze(CCM_imgc);
+% montage_RR(reshape(imgc, [new_dims(1) new_dims(2) prod(new_dims)/(new_dims(1)*new_dims(2))]),[-pi pi]);
+
 
 img_s.img = img;
 img_s.header = header;

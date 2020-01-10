@@ -8,12 +8,15 @@ function [RTFM_output] = recon_spiral_DNF(dfile, nfile, user_opts)
 make_nhlbi_toolbox;
 make_dev;
 
-addpath('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Ramasawmy\local_MATLAB\ismrm_sunrise_matlab-master\irt\mex\v7');
-addpath('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Ramasawmy\local_MATLAB\ismrm_sunrise_matlab-master\irt\mri');
-addpath('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\test_data\2D_spiral'); % RR
-addpath('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\test_data\3D_spiral'); % RR
-addpath('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\trajectories'); % RR
-addpath('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\spiral_GRAPPA'); % RR
+dfile = nhlbi_toolbox.run_path_on_sys(dfile);
+nfile = nhlbi_toolbox.run_path_on_sys(nfile);
+
+addpath(nhlbi_toolbox.run_path_on_sys('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Ramasawmy\local_MATLAB\ismrm_sunrise_matlab-master\irt\mex\v7'));
+addpath(nhlbi_toolbox.run_path_on_sys('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Ramasawmy\local_MATLAB\ismrm_sunrise_matlab-master\irt\mri'));
+addpath(nhlbi_toolbox.run_path_on_sys('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\test_data\2D_spiral')); % RR
+addpath(nhlbi_toolbox.run_path_on_sys('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\test_data\3D_spiral')); % RR
+addpath(nhlbi_toolbox.run_path_on_sys('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\trajectories')); % RR
+addpath(nhlbi_toolbox.run_path_on_sys('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\spiral_GRAPPA')); % RR
 
 
 %% Grab XML header
@@ -42,6 +45,9 @@ user_opts.bin = 0;
 user_opts.SNR = 0;
 user_opts.GRAPPA = 0;
 user_opts.GRAPPA_ref_dfile = ''; % uigetfile?
+user_opts.arm_blocks = 1;
+user_opts.import_weights = [];
+user_opts.export_weights = 0;
 
 %%% Recipe selection
 % user_opts.traj_file = 'meas_MID00221_FID16805_VDSFLMEASVE_24x48_192m_20190531.mat'; 
@@ -50,8 +56,9 @@ user_opts.traj_file = 'meas_MID00279_FID37048_VDSFLMEASVE_m256_fov300_s48.mat';
 user_opts.gridReadLow = 20;
 user_opts.gridReadHigh = 2155; % end-of-spiral
 % user_opts.gridReadHigh = 2632; % rewinder-included
-% user_opts.GRAPPA_Xall_file = []; 
-user_opts.GRAPPA_Xall_file = '\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\trajectories\Xall_fov300_matrix256_AF2_VD24x48.mat';
+user_opts.GRAPPA_Xall_file = []; 
+% user_opts.GRAPPA_Xall_file = '\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\trajectories\Xall_fov300_matrix256_AF2_VD24x48.mat';
+% user_opts.GRAPPA_Xall_file = '\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\trajectories\meas_MID00359_FID42470_VDSFLMEASVE_fov320_s48_dt.mat';
 
 
 %% Grab sequence-specific info ### Requires user attention! ### 
@@ -77,8 +84,8 @@ end
 dmtx = nhlbi_toolbox.noise_adjust(nfile, iRD_s, raw_data.head.sample_time_us(1)*1e-6, nhlbi_toolbox);
 
 %% GRAPPA CALIBRATION DATA
-if user_opts.GRAPPA == 1
-cal_data = h5read(user_opts.GRAPPA_ref_dfile,'/dataset/data');
+if user_opts.GRAPPA == 1 && isempty(user_opts.import_weights)
+cal_data = h5read(nhlbi_toolbox.run_path_on_sys(user_opts.GRAPPA_ref_dfile),'/dataset/data');
 % cal_dmtx = ismrm_dmtx_RR(user_opts.GRAPPA_ref_nfile, cal_data.head.sample_time_us(1)*1e-6); % NOISE FILE MUST BE THE SAME!
 
 samples     = double(cal_data.head.number_of_samples(1));
@@ -155,6 +162,49 @@ for ii = 1:length(raw_data.data)
     
 end
 
+if user_opts.arm_blocks > 1
+    
+    kspace_temp = complex(zeros([samples length(raw_data.data) channels],'single'));
+    kspace_b = complex(zeros([samples interleaves ((reps+1)/2 -2) channels],'single')); % size(kspace_b)
+    sample_indices = 1:length(raw_data.data);
+    
+    for ii = 1:length(raw_data.data)
+        
+        d1 = raw_data.data{ii};
+        d2 = complex(d1(1:2:end), d1(2:2:end));
+        d3 = reshape(d2, samples, channels); %  RE & IM (2)
+        
+        d3 = ismrm_apply_noise_decorrelation_mtx(d3, dmtx);
+        
+        kspace_temp(:,ii,:) = d3;
+        
+    end
+    
+    kspace_temp = kspace_temp(:,(2*interleaves + 1):end,:);
+    sample_indices = sample_indices(:,(2*interleaves + 1):end,:);
+    
+    averages = ((reps+1)/2 -2)/user_opts.arm_blocks;
+%     kspace_temp = reshape(kspace_temp, [samples, interleaves/user_opts.arm_blocks user_opts.arm_blocks*((reps+1)/2 -2)/averages averages channels]);
+    kspace_temp = reshape(kspace_temp, [samples, interleaves/user_opts.arm_blocks user_opts.arm_blocks*user_opts.arm_blocks averages channels]);
+%     size(kspace_temp)
+    sample_indices = reshape(sample_indices, [interleaves/user_opts.arm_blocks user_opts.arm_blocks*user_opts.arm_blocks averages ]);
+    
+    repc = 0;
+    for jj = 1:averages
+        for ii = 1:user_opts.arm_blocks
+            repc = repc + 1;
+            temp_vec = ii:(user_opts.arm_blocks):(user_opts.arm_blocks*user_opts.arm_blocks);
+             temp_ints= vec(sample_indices(:,temp_vec,jj));
+% %              [temp_ints raw_data.head.idx.kspace_encode_step_1(temp_ints)+1]
+            kspace_b(:,raw_data.head.idx.kspace_encode_step_1(temp_ints)+1,repc,:) = reshape(squeeze(kspace_temp(:,:,temp_vec,jj,:)), [samples interleaves channels]);
+            
+        end
+    end
+
+    kspace_b = permute(kspace_b, [1 2 4 3]); clear kspace_temp sample_indices 
+    
+end
+
 kspace = permute(kspace, [1 2 4 3]);
 
 %% Load traj and crop 
@@ -176,7 +226,11 @@ kyall = kyall(gridReadLow+1:gridReadHigh,:);
 % Crop kspace & calibration data
 kspace = kspace(gridReadLow+1:gridReadHigh,:,:,:);
 
-if user_opts.GRAPPA == 1
+if user_opts.arm_blocks > 1
+    kspace_b = kspace_b(gridReadLow+1:gridReadHigh,:,:,:);
+end
+
+if user_opts.GRAPPA == 1 && isempty(user_opts.import_weights)
 kspaceCalibration = kspaceCalibration(gridReadLow+1:gridReadHigh,:,:,:);
 end
 
@@ -297,22 +351,36 @@ if user_opts.GRAPPA == 0
 else % GRAPPA == 1
     % === under-sampled data ===
     
-    rseg = 8; %read segment size. default=8
-    pseg = 1; %projection segment size. default=4
-    af = interleaves_FS/interleaves;
-    if isempty(user_opts.GRAPPA_Xall_file)
-        Xall = prepXall(kx, ky, af); size(Xall)
-        save(['\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\trajectories\Xall_fov' num2str(fov) '_matrix' num2str(matrix) '_AF' num2str(af) '_VD24x48.mat'], 'Xall');
+    
+    if ~isempty(user_opts.import_weights)
+        disp('Importing calibration');
+        
+        g_weights       = user_opts.import_weights.g_weights;
+        source_indices  = user_opts.import_weights.source_indices;
+        Xall            = user_opts.import_weights.Xall;
+        interleaves_FS  = user_opts.import_weights.interleaves_FS;
+        af = interleaves_FS/interleaves;
+    
     else
-        load(user_opts.GRAPPA_Xall_file);
+        
+        rseg = 8; %read segment size. default=8
+        pseg = 1; %projection segment size. default=4
+        af = interleaves_FS/interleaves;
+        
+        if isempty(user_opts.GRAPPA_Xall_file)
+            Xall = prepXall(kx, ky, af); size(Xall)
+            %save(['\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Franson\Recon_code\trajectories\Xall_fov' num2str(fov) '_matrix' num2str(matrix) '_AF' num2str(af) '_VD24x48.mat'], 'Xall');
+        else
+            load(user_opts.GRAPPA_Xall_file);
+        end
+        
+        disp('performing calibration');
+        mode='calibration';
+        
+        tic
+        [~,g_weights,source_indices] = throughtime_spiral_grappa_v4_crop(Xall,kx,ky,[],kspaceCalibration,rseg,pseg,af,mode,[],[]);
+        toc
     end
-    
-    disp('performing calibration');
-    mode='calibration';
-    
-    tic
-    [~,g_weights,source_indices] = throughtime_spiral_grappa_v4_crop(Xall,kx,ky,[],kspaceCalibration,rseg,pseg,af,mode,[],[]);
-    toc
     
     disp('performing reconstruction')
     mode='reconstruction';
@@ -375,11 +443,100 @@ else % GRAPPA == 1
         
     end
     
+    if user_opts.arm_blocks > 1
+        coil_imrec_b = zeros([matrix_size channels size(kspace_b,4)]);
+        imrec_b = zeros([matrix_size size(kspace_b,4)]);
+        
+        for m=1:size(kspace_b,4)
+            RR_loop_count(m, size(kspace_b,4));
+            
+            sigrecMeas = throughtime_spiral_grappa_v4_crop(Xall,kx,ky,kspace_b(:,:,:,m),[],[],[],af,mode,g_weights,source_indices);
+            kfilled = reshape(sigrecMeas,size(kx,1)*interleaves_FS,channels);
+            x = nufft_adj(kfilled.*repmat(wi,[1,channels]),st);
+            coil_imrec_b(:,:,:,m) = x;
+            imrec_b(:,:,m) = sqrt(sum(x.*conj(x),3));
+            
+        end
+        
+        RTFM_output.img_b = imrec_b;
+    end
 end
 
+%%
+prescannorm = 0;
+if prescannorm
+    
+    [psn, n_ismrmrd_s] = nhlbi_toolbox.prescan_normalize(nfile, iRD_s, nhlbi_toolbox);
+    im_fov =  [iRD_s.encoding.reconSpace.fieldOfView_mm.x iRD_s.encoding.reconSpace.fieldOfView_mm.y iRD_s.encoding.reconSpace.fieldOfView_mm.z];
+    im_res = im_fov./[iRD_s.encoding.reconSpace.matrixSize.x iRD_s.encoding.reconSpace.matrixSize.y iRD_s.encoding.reconSpace.matrixSize.z];
+    
+    img_temp = imrec(:,:,end);
+    
+    img_temp = rot90(img_temp,0); % ax LF
+    % %     img_temp = rot90(img_temp,1);
+    
+    figure, imshow([dev.nrr(img_temp)],[0 3])
+
+    %%  
+    % image rotation matrix
+    IM_R = [raw_data.head.read_dir(:,1), raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ];
+    
+    % image in physical coordinates
+    Xinit = linspace(-(im_fov(1)/2 - im_res(1)/2), (im_fov(1)/2 - im_res(1)/2), iRD_s.encoding.reconSpace.matrixSize.x);
+    Yinit = linspace(-(im_fov(2)/2 - im_res(2)/2), (im_fov(2)/2 - im_res(2)/2), iRD_s.encoding.reconSpace.matrixSize.y);
+    Zinit = 0; % ??
+    
+    % Set up meshgrid for rotation
+    [Xq,Yq,Zq] = meshgrid(Xinit,Yinit,Zinit);
+    XYZ = [Xq(:) Yq(:) Zq(:)];
+    
+    % Rotate to image plan
+    rotXYZ=XYZ*IM_R';
+    % Add imaging offsets
+    rotXYZ=rotXYZ + repmat(raw_data.head.position(:,1)',[size(rotXYZ,1) 1]);
+    % Reshape for coil model
+    Xqr = reshape(rotXYZ(:,1), size(Xq,1), []);
+    Yqr = reshape(rotXYZ(:,2), size(Yq,1), []);
+    Zqr = reshape(rotXYZ(:,3), size(Zq,1), []);
+    XYZ = cat(4, Xqr, Yqr, Zqr); % figure, imshow([Xqr Yqr Zqr],[]); colormap('parula')
+    
+    % Generate coil model for imaging slice
+    coil_sens = psn.model_3D( psn.model_3D_coefs , XYZ);
+    
+    figure, 
+    subplot(2,4,1); hold on, title('Slice Coil Map'), imshow(coil_sens,[]);
+    subplot(2,4,2); hold on, title('Normalised to model'), imshow(dev.nrr([img_temp./(coil_sens)]),[0 3])
+    subplot(2,4,3); hold on, title('Normalised + mean(img) offset'), imshow(dev.nrr([img_temp./(coil_sens + mean(img_temp(:)) )]),[0 3])
+    subplot(2,4,4); hold on, title('Nada'), imshow(dev.nrr([img_temp]),[0 3])
+    
+    coil_sens3 = psn.model3_3D( psn.model3_3D_coefs , XYZ);
+    
+    subplot(2,4,5); hold on, title('Slice Coil Map'), imshow(coil_sens3,[]);
+    subplot(2,4,6); hold on, title('Normalised to model'), imshow(dev.nrr([img_temp./(coil_sens3)]),[0 3])
+    subplot(2,4,7); hold on, title('Normalised + mean(img) offset'), imshow(dev.nrr([img_temp./(coil_sens3 + mean(img_temp(:)) )]),[0 3])
+end
+    
+    
+%%
 % whos imrec
-montage_RR(imrec)
-RTFM_output.img = imrec; 
+if (ispc) || (ismac) % dont draw in linux
+    montage_RR(imrec);
+end
+   
+RTFM_output.img = imrec;
+
+if user_opts.export_weights == 1
+    user_opts.import_weights.g_weights      = g_weights;
+    user_opts.import_weights.source_indices = source_indices;
+    user_opts.import_weights.Xall           = Xall;
+    user_opts.import_weights.interleaves_FS = interleaves_FS;
+end
+
+if (~isempty(user_opts.import_weights) && (user_opts.export_weights == 0))
+    user_opts.import_weights = []; % save space on data export
+end
+
+RTFM_output.user_opts = user_opts;
 
 end
 

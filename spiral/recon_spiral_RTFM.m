@@ -328,11 +328,18 @@ user_opts.csm = csm_recon(raw_data, data_store, trajectory, gradients_nominal, s
         % end
         
         % Manual GASFib spiral config:
-        gawindow = 5; % acceleration = traj_setup.interleaves/(gawindow/2) - with flow sets;
-        reps = floor(gareps/(gawindow/sets));
-        reps = 10;
+%         gawindow = 5; % acceleration = traj_setup.interleaves/(gawindow/2) - with flow sets;
+        gawindow = user_opts.sliding_window_width;
+        
+        if ~isfield(user_opts,'reps')
+            user_opts.reps= (gareps- user_opts.sliding_window_width+1);
+        end
+        
+        reps = user_opts.reps;
+        
         RT_F.MAG = zeros(matrix, matrix, reps, sets);
-        RT_F.PHA = zeros(matrix, matrix, reps);
+        
+%         RT_F.PHA = zeros(matrix, matrix, reps);
         
         for i = 1:reps
 %             RR_loop_count(i, reps);
@@ -446,72 +453,82 @@ user_opts.csm = csm_recon(raw_data, data_store, trajectory, gradients_nominal, s
             
             %% recon
             if user_opts.SNR > 0
-                
-                sample_window = bin_data{ user_opts.SNR };
-                
                 pseudo_reps = 100; disp(['Running ' num2str(pseudo_reps) ' pseudo-reps']);
-%                 disp('--normal loop--');
-%                 tic
-%                 img_pr = zeros([matrix_size pseudo_reps sets]);
-%                 %
-%                 for i = 1:pseudo_reps
-% %                     RR_loop_count(i,pseudo_reps);
-%                     img_pr(:,:,i,:) = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
-%                 end
-%                 toc
-%                 
                 
-%                 img_pr = abs(img_pr(:,:,:,1));
-%                 
-%                 g = std(abs(img_pr + max(abs(img_pr(:)))),[],3); %Measure variation, but add offset to create "high snr condition"
-%                 g(g < eps) = 1;
-%                 RB_ECG.SNR = mean(img_pr,3)./g;
-% %                 figure, imagesc(RB_ECG.SNR,[0 50]);
-%                 user_opts.snr_1=RB_ECG.SNR ;
-
-                img_pr2= cell(1,pseudo_reps);
-                nhlbi_toolbox.parpool_setup(24);
+                pseudoRep_phases = user_opts.SNR;
                 
-                parfor i = 1:pseudo_reps
-                    img_pr2{i} = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
+                RB_ECG.SNR = zeros( [matrix_size length(pseudoRep_phases)] );
+                
+                for iPhase = 1:length(pseudoRep_phases)
+                    RR_loop_count(iPhase,length(pseudoRep_phases));
+                    sample_window = bin_data{ pseudoRep_phases(iPhase) };
                     
-                end
-                
-                img_pr = zeros([matrix_size pseudo_reps sets]);
-                for i = 1:pseudo_reps
-                    img_pr(:,:,i,:) = img_pr2{i};
-                end
-%                 toc
-                
-                img_pr = abs(img_pr(:,:,:,1));
-                
-                g = std(abs(img_pr + max(abs(img_pr(:)))),[],3); %Measure variation, but add offset to create "high snr condition"
-                g(g < eps) = 1;
-                RB_ECG.SNR = mean(img_pr,3)./g;
-%                 figure, imagesc(RB_ECG.SNR,[0 50]);
-%                 user_opts.snr_2=RB_ECG.SNR ;
-            else
-                RB_ECG.MAG = zeros([matrix_size user_opts.number_cardiac_frames sets]);
-                if sets > 1
-                    RB_ECG.PHA = zeros([matrix_size user_opts.number_cardiac_frames]);
-                end
-                
-                for i = 1:length(bin_data)
-                    RR_loop_count(i, length(bin_data));
+                    %                 disp('--normal loop--');
+                    %                 tic
+                    %                 img_pr = zeros([matrix_size pseudo_reps sets]);
+                    %                 %
+                    %                 for i = 1:pseudo_reps
+                    % %                     RR_loop_count(i,pseudo_reps);
+                    %                     img_pr(:,:,i,:) = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
+                    %                 end
+                    %                 toc
+                    %
                     
-                    if user_opts.IO == 0
-                        sample_window = bin_data{i};
-                    else
-                        sample_window = ceil(0.5*bin_data{i});
+                    %                 img_pr = abs(img_pr(:,:,:,1));
+                    %
+                    %                 g = std(abs(img_pr + max(abs(img_pr(:)))),[],3); %Measure variation, but add offset to create "high snr condition"
+                    %                 g(g < eps) = 1;
+                    %                 RB_ECG.SNR = mean(img_pr,3)./g;
+                    % %                 figure, imagesc(RB_ECG.SNR,[0 50]);
+                    %                 user_opts.snr_1=RB_ECG.SNR ;
+                    
+                    img_pr2= cell(1,pseudo_reps);
+                    nhlbi_toolbox.parpool_setup(24);
+                    
+                    parfor i = 1:pseudo_reps
+                        img_pr2{i} = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
+                        
                     end
                     
-                    if sets > 1
-                        [RB_ECG.MAG(:,:,i,:), RB_ECG.PHA(:,:,i)] = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
-                    else
-                        [RB_ECG.MAG(:,:,i)] = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
+                    img_pr = zeros([matrix_size pseudo_reps sets]);
+                    for i = 1:pseudo_reps
+                        img_pr(:,:,i,:) = img_pr2{i};
                     end
+                    %                 toc
+                    
+                    img_pr = abs(img_pr(:,:,:,1));
+                    
+                    g = std(abs(img_pr + max(abs(img_pr(:)))),[],3); %Measure variation, but add offset to create "high snr condition"
+                    g(g < eps) = 1;
+                    RB_ECG.SNR(:,:,iPhase) = mean(img_pr,3)./g;
+                    
+                    %                 figure, imagesc(RB_ECG.SNR,[0 50]);
+                    %                 user_opts.snr_2=RB_ECG.SNR ;
                 end
             end
+            
+            % Standard recon
+            RB_ECG.MAG = zeros([matrix_size user_opts.number_cardiac_frames sets]);
+            if sets > 1
+                RB_ECG.PHA = zeros([matrix_size user_opts.number_cardiac_frames]);
+            end
+            
+            for i = 1:length(bin_data)
+%                  RR_loop_count(i, length(bin_data));
+                
+                if user_opts.IO == 0
+                    sample_window = bin_data{i};
+                else
+                    sample_window = ceil(0.5*bin_data{i});
+                end
+                
+                if sets > 1
+                    [RB_ECG.MAG(:,:,i,:), RB_ECG.PHA(:,:,i)] = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
+                else
+                    [RB_ECG.MAG(:,:,i)] = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
+                end
+            end
+            
             
         end
         
@@ -537,11 +554,29 @@ user_opts.csm = csm_recon(raw_data, data_store, trajectory, gradients_nominal, s
     
     if user_opts.recon_RB_DCSG
         
-        [dcsg] = self_gate_DC(data_store, iRD_s, [user_opts.number_cardiac_frames 1]);
+%         resp_frames = 8; 
+        resp_frames = 1;
+        [dcsg] = self_gate_DC(data_store, iRD_s, [user_opts.number_cardiac_frames resp_frames]);
         bin_data = cell(1,user_opts.number_cardiac_frames);
         for i = 1:user_opts.number_cardiac_frames
             bin_data{i} = find(dcsg.ecg_binned == i);
         end
+        
+%         bin_data = cell(1,resp_frames);
+%         for i = 1:resp_frames
+%             bin_data{i} = find(dcsg.ecg_binned == i);
+%         end
+%         
+%         RB_DCSG.MAG = zeros([matrix_size resp_frames ]);
+%         
+%         for i = 1:resp_frames
+%             RR_loop_count(i, length(bin_data));
+%             sample_window = bin_data{i};
+%             [RB_DCSG.MAG(:,:,i,:)] = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
+%         end
+%         
+%         implay_RR(RB_DCSG.MAG(:,:,2:end))
+%         
         
         %% Binning Analysis
         RB_DCSG.bin_stats = binning_traj_stats(raw_data, bin_data, user_opts);

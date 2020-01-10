@@ -26,6 +26,9 @@ end
 make_dev;
 make_nhlbi_toolbox;
 
+file = nhlbi_toolbox.run_path_on_sys(file);
+nfile = nhlbi_toolbox.run_path_on_sys(nfile);
+
 %%
 raw_data= h5read(file, '/dataset/data');
 ismrmrd_s = read_h5_header(file); disp(' ');disp('### Protocol Name ###');disp(ismrmrd_s.measurementInformation.protocolName);disp(' ');
@@ -98,7 +101,7 @@ bin_phases = ismrmrd_s.userParameters.userParameterLong_1.value;
 
 [bin_data, NominalInterval] = physio_Binning(raw_data.head.physiology_time_stamp, bin_phases); % figure, plot(raw_data.head.physiology_time_stamp(1,:), 'r-');
    
-kspace = complex(zeros([ismrmrd_s.encoding.encodedSpace.matrixSize.x pe1 pe2 averages slices contrasts bin_phases reps sets channels],'single'));
+kspace = complex(zeros([ismrmrd_s.encoding.encodedSpace.matrixSize.x pe1 pe2 1 slices contrasts bin_phases reps sets channels],'single'));
 
 for iPha = 1:bin_phases
     temp = bin_data{iPha};
@@ -137,7 +140,7 @@ for iPha = 1:bin_phases
         kspace(echo_vec,...
             iPE1, ... % raw_data.head.idx.kspace_encode_step_1(ii)+1
             raw_data.head.idx.kspace_encode_step_2(ii)+1, ...
-            raw_data.head.idx.average(ii)+1, ....
+            1, .... %raw_data.head.idx.average(ii)+1
             raw_data.head.idx.slice(ii)+1 , ...
             raw_data.head.idx.contrast(ii)+1, ...
             iPha, ...
@@ -169,6 +172,7 @@ if SNR_flag
     %     snr = zeros(ismrmrd_s.encoding.reconSpace.matrixSize.x, ismrmrd_s.encoding.reconSpace.matrixSize.y, slices);
     snr = zeros( ismrmrd_s.encoding.reconSpace.matrixSize.x, size(kspace,2), length(pseudoRep_phases) );
     
+    
     for i = 1:length(pseudoRep_phases)
         
         iPhase = pseudoRep_phases(i);
@@ -185,7 +189,7 @@ if SNR_flag
         img_pr = zeros(samples, size(kspace,2), pseudo_reps);
         
         for iPR = 1:pseudo_reps
-            RR_loop_count(iPR,pseudo_reps);
+%             RR_loop_count(iPR,pseudo_reps);
             
             % x y z 1-average (with binning method) [assume slice,
             % contrasts and reps = 1], and choose set = 1;
@@ -236,18 +240,12 @@ if SNR_flag
             kspace_pr = squeeze(kspace_pr);
             
             if ismrmrd_s.encoding.parallelImaging.accelerationFactor.kspace_encoding_step_1 == 1
-          
+                
                 x = ismrm_transform_kspace_to_image(kspace_pr,[1 2]);
                 
-                csm = ismrm_estimate_csm_walsh(x);
-                ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels));
-                
-                img_pr(:,:,iPR) = abs(sum(x .* ccm_roemer_optimal, 3));
-                
             else
-                
                 % detect which lines are reference embedded:
-                sampling_pattern = kspace_pr(:,:,1); % use first coil
+                sampling_pattern = kspace(:,:,1,1,1,1,1,1,1,1); % use first coil
                 sampling_pattern = abs(sampling_pattern) > 0;  %
                 sampling_pattern_1 = sampling_pattern(1,:);
                 acc = ismrmrd_s.encoding.parallelImaging.accelerationFactor.kspace_encoding_step_1;
@@ -259,9 +257,19 @@ if SNR_flag
                 
                 sampling_pattern(:,temp2) = sampling_pattern(:,temp2)*3;
                 
-                img_pr(:,:,iPR) = abs(ismrm_cartesian_GRAPPA( kspace_pr ,sampling_pattern, acc));
+                %                 img_pr(:,:,iPR) = abs(ismrm_cartesian_GRAPPA( kspace_pr ,sampling_pattern, acc));
                 
+                [~,ksp] = GRAPPA(kspace_pr,sampling_pattern, acc);
+                % if we want to pad the kspace (asym echo etc)
+                x = ismrm_transform_kspace_to_image(ksp,[1 2]);
             end
+            
+            csm = ismrm_estimate_csm_walsh(x);
+            ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels));
+            
+            img_pr(:,:,iPR) = abs(sum(x .* ccm_roemer_optimal, 3));
+                
+            
             
         end
         
@@ -272,13 +280,15 @@ if SNR_flag
         snr(:,:,i) = mean(img_pr,3)./g;
         
     end
-    figure, imagesc(snr(:,:),[0 50]); colorbar;
+%     figure, imagesc(snr(:,:),[0 50]); colorbar;
 end
 
 
 %% transform to image-space
 
 kspace = mean(kspace,4);% kspace = squeeze(kspace);cCoil_imgs = ismrm_transform_kspace_to_image(kspace);
+
+cCoil_imgs = zeros([ismrmrd_s.encoding.encodedSpace.matrixSize.x pe1 pe2 1 slices contrasts bin_phases reps sets channels],'single');
 
 asym_e = 0; % RR override for laziness..
 if asym_e == 1
@@ -344,8 +354,12 @@ else
         for iPha = 1:bin_phases
             for iSet = 1:sets
                 
-                cCoil_imgs(:,:,:,:,:,:,iPha,:,iSet) = ismrm_cartesian_GRAPPA(squeeze( kspace(:,:,:,:,:,:,iPha,:,iSet,:)),sampling_pattern, acc);
-                
+%                 cCoil_imgs(:,:,:,:,:,:,iPha,:,iSet) = ismrm_cartesian_GRAPPA(squeeze( kspace(:,:,:,:,:,:,iPha,:,iSet,:)),sampling_pattern, acc) ;
+
+                [~,ksp] = GRAPPA(squeeze( kspace(:,:,:,:,:,:,iPha,:,iSet,:)),sampling_pattern, acc);
+                % if we want to pad the kspace (asym echo etc)
+                cCoil_imgs(:,:,:,:,:,:,iPha,:,iSet,:) = ismrm_transform_kspace_to_image(ksp,[1 2]);
+
             end
         end
         % === GRAPPA recon  === <<
@@ -353,6 +367,8 @@ else
     end
     
 end
+
+
 
 %% remove OS
 OverSampling = ismrmrd_s.encoding.encodedSpace.fieldOfView_mm.x./ismrmrd_s.encoding.reconSpace.fieldOfView_mm.x;
@@ -378,11 +394,11 @@ end
 PD_ccm = zeros(size(cCoil_imgs,1), size(cCoil_imgs,2), bin_phases);
 img_ccm = zeros(size(cCoil_imgs,1), size(cCoil_imgs,2), bin_phases);
 
-if ismrmrd_s.encoding.parallelImaging.accelerationFactor.kspace_encoding_step_1 == 1
+% if ismrmrd_s.encoding.parallelImaging.accelerationFactor.kspace_encoding_step_1 == 1
 if sets == 2
     
     for iPha = 1:bin_phases
-        csm = ismrm_estimate_csm_walsh(squeeze(mean(cat(9, cCoil_imgs(:,:,:,:,:,:,iPha,:,1,:), cCoil_imgs(:,:,:,:,:,:,iPha,:,2,:)  ),9)));
+        csm = ismrm_estimate_csm_walsh( squeeze(mean(cat(9, cCoil_imgs(:,:,:,:,:,:,iPha,:,1,:), cCoil_imgs(:,:,:,:,:,:,iPha,:,2,:)  ),9)) );
         ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels)); % with pre-whitened data
         CCM1 = (sum(squeeze(cCoil_imgs(:,:,:,:,:,:,iPha,:,1,:)) .* ccm_roemer_optimal, 3));
         CCM2 = (sum(squeeze(cCoil_imgs(:,:,:,:,:,:,iPha,:,2,:)) .* ccm_roemer_optimal, 3));
@@ -411,17 +427,17 @@ elseif sets == 1
     
 end
 
-else
-    for iPha = 1:bin_phases
-        
-        CCM1 = squeeze(cCoil_imgs(:,:,:,:,:,:,iPha,:,1,:));
-        CCM2 = squeeze(cCoil_imgs(:,:,:,:,:,:,iPha,:,2,:));
-        
-        PD_ccm(:,:,iPha) = angle(CCM1.*conj(CCM2));
-        img_ccm(:,:,iPha) = abs(CCM1);
-        
-    end
-end
+% else
+%     for iPha = 1:bin_phases
+%         
+%         CCM1 = squeeze(cCoil_imgs(:,:,:,:,:,:,iPha,:,1,:));
+%         CCM2 = squeeze(cCoil_imgs(:,:,:,:,:,:,iPha,:,2,:));
+%         
+%         PD_ccm(:,:,iPha) = angle(CCM1.*conj(CCM2));
+%         img_ccm(:,:,iPha) = abs(CCM1);
+%         
+%     end
+% end
 
 % dev.implay_flow(img_ccm, PD_ccm);
 

@@ -391,16 +391,16 @@ function [sysString] = run_path_on_sys(sysString)
 
 if isunix
     if ismac
-    % MAC OPERATION
-    
-    if(isempty(regexp(sysString, 'Volumes', 'once'))) % Are we already in the right format?
-        catString_i = regexpi(sysString, 'dirhome');
-        temp = sysString(catString_i:end);
-        temp(regexp(temp, '\')) = '/';
-        sysString = lower(['/Volumes/' temp]); % mac is case-independent
-    
-    end
-    
+        % MAC OPERATION
+        
+        if(isempty(regexp(sysString, 'Volumes', 'once'))) % Are we already in the right format?
+            catString_i = regexpi(sysString, 'dirhome');
+            temp = sysString(catString_i:end);
+            temp(regexp(temp, '\')) = '/';
+            sysString = lower(['/Volumes/' temp]); % mac is case-independent
+            
+        end
+        
     else
         % LINUX/UBUNTU OPERATION
         
@@ -408,25 +408,40 @@ if isunix
         % sudo -t cifs //hl-share.nhlbi.nih.gov/DIRHome/RamasawmyR ~/dirhome/ -o username=ramasawmyr,domain=NIH
         % THIS WILL NEED TO BE GENERICALLY CONFIGURED!
         
-        if(isempty(regexp(sysString, '/home/ramasawmyr/dirhome/', 'once'))) % Are we already in the right format?
-        
-        catString_i = regexpi(sysString, 'scan data');
-        temp = sysString(catString_i:end);
-        temp(regexp(temp, '\')) = '/';
-        sysString = lower(['/home/ramasawmyr/dirhome/' temp]); % case-independent?
-
+        if(isempty(regexpi(sysString, 'lab-campbell')))
+            
+            if(isempty(regexp(sysString, '/home/ramasawmyr/dirhome/', 'once'))) % Are we already in the right format?
+                
+                %         catString_i = regexpi(sysString, 'scan data');
+                catString_i = regexpi(sysString, 'RamasawmyR');
+                temp = sysString((catString_i + length('RamasawmyR')+1):end);
+                temp(regexp(temp, '\')) = '/';
+                %         sysString = lower(['/home/ramasawmyr/dirhome/' temp]); % case-independent?
+                sysString = (['/home/ramasawmyr/dirhome/' temp]); % case-independent?
+                
+            end
+        else
+            if(isempty(regexp(sysString, '/mnt/lab-campbell', 'once'))) % Are we already in the right format?
+                
+                catString_i = regexpi(sysString, 'lab-campbell');
+                temp = sysString((catString_i + length('lab-campbell')+1):end);
+                temp(regexp(temp, '\')) = '/';
+                %         sysString = lower(['/home/ramasawmyr/dirhome/' temp]); % case-independent?
+                sysString = (['/mnt/lab-campbell/' temp]); % case-independent?
+            end
+            
         end
     end
 else
     % PC OPERATION
-   
-%      if(isempty(regexp(sysString, '\\hl-share.nhlbi.nih.gov', 'once'))) % Are we already in the right format?
-%         catString_i = regexpi(sysString, 'dirhome');
-%         temp = sysString(catString_i:end);
-%         temp(regexp(temp, '/')) = '\';
-%         sysString = lower(['\\hl-share.nhlbi.nih.gov\' temp]); % case-independent
-%     
-%     end
+    
+    %      if(isempty(regexp(sysString, '\\hl-share.nhlbi.nih.gov', 'once'))) % Are we already in the right format?
+    %         catString_i = regexpi(sysString, 'dirhome');
+    %         temp = sysString(catString_i:end);
+    %         temp(regexp(temp, '/')) = '\';
+    %         sysString = lower(['\\hl-share.nhlbi.nih.gov\' temp]); % case-independent
+    %
+    %     end
 end
 
 

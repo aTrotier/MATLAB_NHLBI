@@ -5,9 +5,10 @@ function [img_s] = recon_spiral(dfile,  nfile, SpiDes)
 % i.e. archimedean spiral, no post-adc wait-time, and no pseudo-rep 
 
 %% Set up
+make_nhlbi_toolbox;
 
-dfile = RR_run_on_mac(dfile); % incorporate with NHLBI toolbox
-nfile = RR_run_on_mac(nfile);
+dfile = nhlbi_toolbox.run_path_on_sys(dfile); % incorporate with NHLBI toolbox
+nfile = nhlbi_toolbox.run_path_on_sys(nfile);
 
 raw_data = h5read(dfile,'/dataset/data');
 iRD_s = read_h5_header(dfile);
@@ -291,7 +292,7 @@ for par = 1:pe2
                         cCoil_imgs(:,:,par,1,slc,coc,phc,repc,setc)= abs( sum( squeeze( img_coil ) .* ccm_roemer_optimal, 3) );
                         
                         % %                     timer_vec(tcounter) = toc;
-                        
+                        if (ispc) || (ismac) % dont draw in linux
                         imshow(dev.nrr(cCoil_imgs(:,:,par,1,slc,coc,phc,repc,setc)),[0 4]); 
                         drawstring = [];
                         if pe2 > 1
@@ -313,6 +314,8 @@ for par = 1:pe2
                             drawstring = [drawstring 'Set ' num2str(setc) ' '];
                         end
                         title(drawstring); drawnow;
+                        end
+                        
                     end
                 end
             end

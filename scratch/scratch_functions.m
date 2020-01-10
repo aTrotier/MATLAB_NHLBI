@@ -61,7 +61,8 @@ linkaxes(hl, 'x');
 end
 
 function [output] = get_rois(xi,x)
-output = [mean(xi(x.WM_roi)) std(xi(x.WM_roi)) mean(xi(x.GM_roi)) std(xi(x.GM_roi))];
+% output = [mean(xi(x.WM_roi)) std(xi(x.WM_roi)) mean(xi(x.GM_roi)) std(xi(x.GM_roi))];
+output = [mean(xi(x)) std(xi(x)) ];
 end
 
 function implay_flow(M,P, gif_filename)
@@ -297,7 +298,7 @@ function grab_dicom_study(dicomPath)
 
 if nargin < 1
     if ismac
-        dicomPath = '/Volumes/DIRHome/';
+        dicomPath = uigetdir('/Volumes/');
     else
         dicomPath = uigetdir('\\hl-share.nhlbi.nih.gov\DIRHome\RamasawmyR\Scan Data');
     end
@@ -394,15 +395,46 @@ end
 function z = quickmean(x,y)
 if nargin == 1
     y = x;
+    roi = x > mean(x(:));
+    z = mean(y(roi));
+else
+    z = mean(x(find(y)));
 end
-roi = x > mean(x(:));
-z = mean(y(roi));
 end
 
 function y = nrr(x)
 y = x./mean(x(:));
 end
 
+function [traj_order] = skip_step(num_int, fib_flag)
+if nargin < 2
+    fib_flag = 0;
+end
+
+traj_order = zeros(1, num_int);
+if fib_flag == 0
+    x1 = 1:floor(num_int/2);
+    x2 = fliplr((floor(num_int/2)+1):num_int);
+    
+    if mod(num_int,2) == 0
+        traj_order(1:2:end) = x1;
+        traj_order(2:2:end) = x2;
+    else
+        traj_order(1:2:end) = x2;
+        traj_order(2:2:end) = x1;
+    end
+else 
+    fib_series = [3 5 8 13 21 34 55 89 144];
+    fib_step = fib_series(find(num_int < fib_series, 1, 'first')-fib_flag); % 1, normal, 2, tiny step (better?)
+    temp = 1 + mod([0:fib_step:(fib_step*num_int)], num_int);
+    traj_order = temp(1:num_int);
+    % check
+    if ~length(unique(traj_order))==num_int
+        warning('Fib series error');
+    end
+end
+
+end
 % #####################
 % Hargreaves...
 
@@ -437,4 +469,10 @@ function Ry=yrot(phi)
 
 Ry = [cos(phi) 0 sin(phi);0 1 0;-sin(phi) 0 cos(phi)];
 
+end
+
+function Rth=throt(phi,theta)
+Rz = zrot(-theta);
+Rx = xrot(phi);
+Rth = inv(Rz)*Rx*Rz;
 end

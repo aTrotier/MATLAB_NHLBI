@@ -1,6 +1,6 @@
-function dicom_sort(path1)
+function dicom_sort_folder(path1)
 % dicom_sort(path1)
-% Default path should be edited!
+% Note: default path (UI_default_dir) can be edited for user's convenience.
 %
 % dicom_sort scrapes through dicom files in a single folder and create names:
 % XXX(SCANNUMBER)_SCANNAME(WITHOUT UNDERSCORES OR GAPS!)

@@ -51,9 +51,10 @@ cmp = jet(single(channels));
 channel_legend = cellstr(num2str([1:channels]'));
 
 % average two flow sets together for even phase-contrast binning
+sets = (i_rd.encoding.encodingLimits.set.maximum + 1);
 if i_rd.encoding.encodingLimits.set.maximum
-    TR = (i_rd.encoding.encodingLimits.set.maximum + 1)*TR;
-    data = squeeze(mean(reshape(data, [2 length(data)/2 channels]),1));
+    TR = sets*TR;
+    data = squeeze(mean(reshape(data, [sets length(data)/sets channels]),1));
     % figure, plot(data)
 end
 
