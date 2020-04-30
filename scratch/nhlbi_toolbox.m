@@ -62,9 +62,48 @@ end
 
 end
 
+
+function [X_rec] = svd_denoise(x, rank_K)
+% image-based denoising, rank defaults to 3
+
+x_vec = reshape(x,[size(x,1)*size(x,2),size(x,3)]);
+
+% Take SVD
+[U,S,V] = svd(x_vec,'econ');
+
+% tructate SVD
+if nargin < 2
+    % auto choose rank?
+    rank_K = 3;
+end
+
+s_diag = diag(S);
+s_diag_trunc = zeros(size(s_diag));
+s_diag_trunc(1:rank_K) = s_diag(1:rank_K);
+
+S_trunc = zeros(size(S));
+S_trunc(1:size(x_vec,2),1:size(x_vec,2)) = diag(s_diag_trunc);
+
+% Return denoised image
+x_rec_vec = U*S_trunc*V';
+X_rec = reshape(x_rec_vec,[size(x,1),size(x,2),size(x,3)]);
+
+%  plot recon
+slc = 1;
+figure(10);imagesc([x(:,:,slc),X_rec(:,:,slc)]);colormap(gray); axis image; 
+end
+
+
 function data_pca = coil_pca(data, coils_out)
 % function data_pca = coil_pca(data, coils_out)
-% 2D data
+% 2D (?) data
+% Pre-whitened data
+% Something like this: 
+%
+% Array Compression for MRI With Large Coil Arrays
+% M Buehrer, KP. Pruessmann, P Boesiger & Sebastian Kozerke
+% Magnetic Resonance in Medicine 57:1131–1139 (2007)
+
 reshape_data = 0;
 coils_in = size(data,ndims(data));
 
@@ -95,7 +134,8 @@ end
 
 %% PCA
 
-data_pca = U(:,1:coils_out)*S(1:coils_out,1:coils_out)*V(1:coils_out,1:coils_out)';
+% data_pca = U(:,1:coils_out)*S(1:coils_out,1:coils_out)*V(1:coils_out,1:coils_out)';
+data_pca = U(:,1:coils_out)*S(1:coils_out,1:coils_out);
 
 if reshape_data
     data_in_dims(end) = coils_out;
@@ -121,14 +161,20 @@ a = fprintf(print_line, i_vec(1),iRD_vec(1),i_vec(2),iRD_vec(2),i_vec(3),iRD_vec
 
 end
 
-function plot_experiment(raw_data)
+function plot_experiment(raw_data, subset_indices)
 
 hl = [];
 temp = fieldnames(raw_data.head.idx);
 figure('Name', 'Experiment header');
 for i = 1:9 % dont plot user vector
     h.(matlab.lang.makeValidName(['x' num2str(i)])) = subplot(3, 3, i);
-    plot( 1+double(raw_data.head.idx.(matlab.lang.makeValidName(temp{i}))) ); title(temp{i}, 'Interpreter', 'none')
+    
+    rdvec = 1+single(raw_data.head.idx.(matlab.lang.makeValidName(temp{i})));
+    if nargin > 1
+        rdvec = rdvec(subset_indices);
+    end
+    
+    plot( rdvec ); title(temp{i}, 'Interpreter', 'none')
     hl = [hl, h.(matlab.lang.makeValidName(['x' num2str(i)]))];
 end
 linkaxes(hl, 'x');
@@ -507,5 +553,18 @@ if isempty(gcp_info.isvalid)
     %         parpool('local', requested_pp);
     %     end
 end
-
 end
+
+function licence_checkout(debug)
+if nargin > 0
+    ver 
+end
+    
+    disp('Checking: Curve Fitting, Image, Signal and Wavelet')
+
+    license('checkout','Curve_Fitting_Toolbox');
+    license('checkout','Image_Toolbox');
+    license('checkout','Signal_Toolbox');
+    license('checkout','Wavelet_Toolbox');
+end
+

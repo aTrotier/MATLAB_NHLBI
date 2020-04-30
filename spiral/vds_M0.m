@@ -6,22 +6,25 @@ function [xm0, ym0, g_info]=vds_M0(smax,gmax,dt,interleaves,FOV,kr,trapflag)
 % add_rewinders.m, balance_moments.m
 %
 % R Ramasawmy, NHLBI, Oct 2018.
-
-if nargin < 7
-    trapflag = 0;
+if nargin == 0
+    xm0.add_rewinders = @add_rewinders;
+    xm0.balance_moments = @balance_moments;
+else
+    if nargin < 7
+        trapflag = 0;
+    end
+    
+    % --- Run VDS at Gradient raster time ---
+    [~,g] = vds_GRT(smax,gmax,dt,interleaves,FOV,kr);
+    xgrad = (real(g(:))*cos(0)+imag(g(:))*sin(0));
+    ygrad = (-real(g(:))*sin(0)+imag(g(:))*cos(0));
+    
+    % --- use scanner gradient settings ---
+    Tgsample = 1e-5; % GRT
+    amppersamp = (1/sqrt(3.0)) * smax * Tgsample;
+    
+    [xm0, ym0, g_info]=add_rewinders(xgrad,ygrad,amppersamp, gmax, trapflag);
 end
-
-% --- Run VDS at Gradient raster time ---
-[~,g] = vds_GRT(smax,gmax,dt,interleaves,FOV,kr);
-xgrad = (real(g(:))*cos(0)+imag(g(:))*sin(0));
-ygrad = (-real(g(:))*sin(0)+imag(g(:))*cos(0));
-
-% --- use scanner gradient settings ---
-Tgsample = 1e-5; % GRT
-amppersamp = (1/sqrt(3.0)) * smax * Tgsample;
-
-[xm0, ym0, g_info]=add_rewinders(xgrad,ygrad,amppersamp, gmax, trapflag);
-
 % --- preview traj ---
 
 % figure, plot(cumsum(xm0),cumsum(ym0))

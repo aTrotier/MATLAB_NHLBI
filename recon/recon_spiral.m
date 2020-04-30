@@ -5,54 +5,68 @@ function [img_s] = recon_spiral(dfile,  nfile, SpiDes)
 % i.e. archimedean spiral, no post-adc wait-time, and no pseudo-rep 
 
 %% Set up
+
+% ============================================
+% Load data
+% ============================================
 make_nhlbi_toolbox;
 
-dfile = nhlbi_toolbox.run_path_on_sys(dfile); % incorporate with NHLBI toolbox
-nfile = nhlbi_toolbox.run_path_on_sys(nfile);
+dfile       = nhlbi_toolbox.run_path_on_sys(dfile); % incorporate with NHLBI toolbox
+nfile       = nhlbi_toolbox.run_path_on_sys(nfile);
 
-raw_data = h5read(dfile,'/dataset/data');
-iRD_s = read_h5_header(dfile);
-
+iRD_s       = read_h5_header(dfile);
 disp(['Reconstructing: ' iRD_s.measurementInformation.protocolName]);
 
-% figure, 
-% subplot(3,2,1); plot(1+double(raw_data.head.idx.kspace_encode_step_1)); title('kspace step 1')
-% subplot(3,2,2); plot(1+double(raw_data.head.idx.average)); title('average')
-% subplot(3,2,3); plot(1+double(raw_data.head.idx.set)); title('set')
-% subplot(3,2,4); plot(1+double(raw_data.head.idx.slice)); title('slice')
-% subplot(3,2,5); plot(1+double(raw_data.head.idx.repetition)); title('repetition')
-% subplot(3,2,6); plot(1+double(raw_data.head.idx.phase)); title('phase')
+raw_data    = h5read(dfile,'/dataset/data');
 
-interleaves = double(max(raw_data.head.idx.kspace_encode_step_1))+1;
-pe2 = 1+double(max(raw_data.head.idx.kspace_encode_step_2));
-contrasts = double(max(raw_data.head.idx.contrast))+1;
-phases = double(max(raw_data.head.idx.phase))+1;
-samples = double(raw_data.head.number_of_samples(1));
-channels = double(raw_data.head.active_channels(1));
-sets = (1 + double(max(raw_data.head.idx.set)));
-reps = (1 + double(max(raw_data.head.idx.repetition)));
-averages = (1 + double(max(raw_data.head.idx.average)));
-slices = (1 + double(max(raw_data.head.idx.slice)));
+% nhlbi_toolbox.plot_experiment(raw_data);
+
+% ============================================
+% Grab imaging parameters
+% ============================================
+
+interleaves     = (1 + double(max(raw_data.head.idx.kspace_encode_step_1)));
+pe2             = (1 + double(max(raw_data.head.idx.kspace_encode_step_2)));
+contrasts       = (1 + double(max(raw_data.head.idx.contrast)));
+phases          = (1 + double(max(raw_data.head.idx.phase)));
+samples         =      double(raw_data.head.number_of_samples(1));
+channels        =      double(raw_data.head.active_channels(1));
+sets            = (1 + double(max(raw_data.head.idx.set)));
+reps            = (1 + double(max(raw_data.head.idx.repetition)));
+averages        = (1 + double(max(raw_data.head.idx.average)));
+slices          = (1 + double(max(raw_data.head.idx.slice)));
+
+matrix          = iRD_s.encoding.reconSpace.matrixSize.x;                   % assuming a square spiral matrix
+dt              = raw_data.head.sample_time_us(1)*1e-6;
+matrix_size     = [matrix matrix];
+
+% ============================================
+% Custom inputs
+% ============================================
 
 if nargin < 3
-    VDSf = 100;
-    delayFactor = 0;
-    pseudoRep = 0;
+    % default: No delay, archimedean design, and no SNR calc. 
+    delayFactor     = 0;
+    VDSf            = 100;
+    pseudoRep       = 0;
+    
 else
-    delayFactor = SpiDes(1);
-    VDSf = SpiDes(2);
-    pseudoRep = SpiDes(3);
+    
+    delayFactor     = SpiDes(1);
+    VDSf            = SpiDes(2);
+    pseudoRep       = SpiDes(3);
     
     % pseudoRep = 0, no PR
-    %             n, perform PR on slice n  
+    %             n, perform PR on slice n
     %             [], perform PR on all slices
     if isempty(pseudoRep)
-        pseudoRep = 1;
-        pseudoRep_slices = 1:slices;
+        pseudoRep           = 1;
+        pseudoRep_slices    = 1:slices;
     end
     if pseudoRep > 0 % specify slice(s);
-        pseudoRep_slices = pseudoRep;
-        pseudoRep = 1;
+        pseudoRep_slices    = pseudoRep;
+        pseudoRep           = 1;
+        
         if pseudoRep_slices > slices
             pseudoRep_slices = RR_slice_order(round(slices/2));
             warning(['PR slice > #slices, using slice ' num2str(pseudoRep_slices)])
@@ -61,15 +75,14 @@ else
         
 end
 
-matrix = iRD_s.encoding.reconSpace.matrixSize.x;
-
-dt = raw_data.head.sample_time_us(1)*1e-6;
-matrix_size = [matrix matrix];
-
 disp(' ');disp('### Experiment Dimensions ###');disp(' ');
 Experiment_parameters = {'Samples', 'Interleaves', 'PE2', 'Averages', 'Slices', 'Contrasts', 'Phases', 'Repetitions', 'Sets', 'Channels'}';
 Value = [samples interleaves pe2 averages slices contrasts phases reps sets channels]';
 disp(table( Experiment_parameters,Value )); clear Experiment_parameters Value; disp(' ');
+
+% ============================================
+% Export sampling info to header
+% ============================================
 
  s_header.samples = samples;
  s_header.dt = dt;
@@ -144,7 +157,8 @@ krmax = 1/(2*(FOV(1)/matrix_size(1)));
 [k,g] = vds(traj_setup.sMax, traj_setup.gMax, dt, interleaves, FOV, krmax); close;
 % [k,g] = vds(smax, gmax, dt, interleaves, FOV, krmax); close;
 
-%% Rotate 
+%% Rotate spiral design 
+
 if samples > length(k)
     samples2 = length(k);
 else
@@ -163,22 +177,31 @@ for solid_int= 1:interleaves
 end
 
 %% GIRF corrections
-trajectory_nominal_u = trajectory_nominal;
-% R = [raw_data.head.read_dir(:,1), raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
-R = [raw_data.head.phase_dir(:,1), raw_data.head.read_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
+
+trajectory_nominal_u = trajectory_nominal;                                  % store nominal trajectory
+
+% ============================================
+% Apply shift if zero-padded ADC
+% ============================================
 
 gradients_store = gradients_nominal;
 if delayFactor > 0
     spiral_start = floor(delayFactor*(1e-5)/dt); if spiral_start == 0; spiral_start = 1; end;
     gradients_nominal = cat(1,zeros([spiral_start interleaves 2]), gradients_store(1:(samples2-spiral_start),:,:));
 end
-tRR = 0;
-% tRR = 0;
+
+% ============================================
+% Apply shift if zero-padded ADC
+% ============================================
+tRR = 0; % custom clock-shift
+    
+R = [raw_data.head.phase_dir(:,1), raw_data.head.read_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
+    % R = [raw_data.head.read_dir(:,1), raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
 
 sR.R = R;
 sR.T = iRD_s.acquisitionSystemInformation.systemFieldStrength_T;
-trajectory_nominal = apply_GIRF(gradients_nominal, dt, sR, tRR );
-% trajectory_nominal = apply_GIRF(gradients_nominal, dt, R, tRR );
+
+trajectory_nominal = apply_GIRF(gradients_nominal, dt, sR, tRR );           % legacy > % trajectory_nominal = apply_GIRF(gradients_nominal, dt, R, tRR );
 trajectory_nominal = trajectory_nominal(:,:,1:2);
 
 %% Collect all data
@@ -210,23 +233,48 @@ end
 
 % memory management
 clear raw_data;
+% data_store = kspace;
 
 %% recon
 
-% === assuming same encoding ===
+% ============================================
+% NUFFT operator set-up
+% ============================================
+
+% Assuming same encoding per image!
 omega = trajectory_nominal*(pi/max(max(max(trajectory_nominal))));
 omega = reshape(omega,interleaves*samples2,2);
 recon_st = nufft_init(omega, matrix_size, [6 6],matrix_size.*2, matrix_size./2);
 
+
+% ============================================
 % spiral-out weight estimation
-recon_weights = DCF_voronoi_RR(double(trajectory_nominal),0,0); % figure, plot(recon_weights);
+% ============================================
 
-% data_store = kspace;
+    % Voronoi
+    % recon_weights = DCF_voronoi_RR(double(trajectory_nominal),0,0); % figure, plot(recon_weights);
+    % recon_weights = recon_weights*sqrt(prod(matrix_size))/(sum(recon_weights(:)));
 
+% set-up for Pipe estimation
+ksp = omega./pi.*((matrix_size/2)./[FOV(1) FOV(1)]);
+mask = true(matrix_size);
+sizeMask = size(mask);
+nufft_args = {sizeMask, [6 6], 2*sizeMask, sizeMask/2, 'table', 2^12, 'minmax:kb'};
+G = Gmri(ksp, mask, 'fov', FOV(1), 'basis', {'dirac'}, 'nufft', nufft_args);
+
+recon_weights = abs(mri_density_comp(ksp, 'pipe','G',G.arg.Gnufft));
+
+% scale weights such that images ~= SNR-scaled
+recon_weights = recon_weights*sqrt(prod(matrix_size))/(sum(recon_weights(:)));
+% figure, plot(recon_weights)
+
+% ============================================
+% Pseudo-replica noise estimation
+% ============================================
 if pseudoRep
     for slc = pseudoRep_slices
         %                    [samps ints pe2 ave sli con pha rep set cha]
-        pr_k = squeeze(kspace(  : ,  : ,  1 , : , slc , 1 , 1 , 1 , 1 , : ));
+        pr_k = squeeze(kspace(  : ,  : ,  1 , : , slc , 1 , 1 , end , 1 , : ));
         
         if length(size(pr_k)) == 3
             pr_k = reshape(pr_k,[size(pr_k,1) size(pr_k,2) 1 size(pr_k,3)]);
@@ -243,7 +291,9 @@ if pseudoRep
             data_pr = squeeze(mean(data_pr,av_dim));
             data_pr = reshape(data_pr,interleaves*samples2,channels);
             
-            x = squeeze(nufft_adj(data_pr.*repmat(recon_weights,[1,channels]), recon_st))/sqrt(prod(recon_st.Kd));
+%             x = squeeze(nufft_adj(data_pr.*repmat(recon_weights,[1,channels]), recon_st))/sqrt(prod(recon_st.Kd));
+            x = squeeze(nufft_adj(data_pr.*repmat(recon_weights,[1,channels]), recon_st))*sqrt(averages);
+            
             % calculate coil combine
             csm = ismrm_estimate_csm_walsh(x);
             ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels)); % with pre-whitened
@@ -251,16 +301,25 @@ if pseudoRep
             img_pr(:,:,i) = abs( sum( x .* ccm_roemer_optimal , 3) );
         end
         
-        g = std(abs(img_pr + max(abs(img_pr(:)))),[],3); %Measure variation, but add offset to create "high snr condition"
-        g(g < eps) = 1;
-        snr(:,:,slc) = mean(img_pr,3)./g;
+        g               = std(abs(img_pr + max(abs(img_pr(:)))),[],3); %Measure variation, but add offset to create "high snr condition"
+        g(g < eps)      = 1;
+        snr(:,:,slc)    = mean(img_pr,3)./g;
+        gmap(:,:,slc)   = g;
         
     end
-    
-    img_s.snr = snr;
+   
+%     montage_RR([img_pr(:,:,1) snr],[0 4*mean(snr(:))]); colormap('parula'); colorbar;
+    montage_RR(snr,[0 4*mean(snr(:))]); colormap('parula'); colorbar;
+    montage_RR(gmap,[0 2*mean(gmap(:))]); colormap('parula'); colorbar;
+    img_s.snr   = snr;
+    img_s.gmap  = gmap;
 end
 
 kspace = mean(kspace,4); % pseudo-rep will need to preceed this step
+
+% ============================================
+% Main reconstruction
+% ============================================
 
 figure,
 make_dev;
@@ -280,18 +339,29 @@ for par = 1:pe2
             for phc = 1:phases
                 for repc = 1:reps
                     for setc = 1:sets
+                        
+                        % ============================================
+                        % Gridding and B1-coil combination
+                        % ============================================
+                        
                         % %                     tic; tcounter = tcounter + 1;
+                        
                         data_temp = squeeze(kspace(1:samples2,:,par,1,slc,coc,phc,repc,setc,:));
                         
                         data_temp = reshape(data_temp,interleaves*samples2,channels);
-                        x = nufft_adj(data_temp.*repmat(recon_weights,[1,channels]), recon_st)/sqrt(prod(recon_st.Kd));
+                        x = nufft_adj(data_temp.*repmat(recon_weights,[1,channels]), recon_st)*sqrt(averages);
                         img_coil = squeeze(x);
                         
                         csm = ismrm_estimate_csm_walsh( img_coil );
                         ccm_roemer_optimal = ismrm_compute_ccm(csm, eye(channels)); % with pre-whitened
                         cCoil_imgs(:,:,par,1,slc,coc,phc,repc,setc)= abs( sum( squeeze( img_coil ) .* ccm_roemer_optimal, 3) );
-                        
+
                         % %                     timer_vec(tcounter) = toc;
+                        
+                        % ============================================
+                        % View updated figure
+                        % ============================================
+
                         if (ispc) || (ismac) % dont draw in linux
                         imshow(dev.nrr(cCoil_imgs(:,:,par,1,slc,coc,phc,repc,setc)),[0 4]); 
                         drawstring = [];

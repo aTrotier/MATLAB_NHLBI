@@ -1,4 +1,4 @@
-function [RTFM_output] = recon_spiral_RTFM(dfile, nfile, user_opts)
+function [RTFM_output] = recon_spiral_RTFM_3D(dfile, nfile, user_opts)
 % recon_spiral_RTFM(dfile, nfile, <user_opts>)
 % 
 % Calls nhlbi_toolbox & scratch_functions
@@ -10,9 +10,6 @@ make_dev;
 
 dfile = nhlbi_toolbox.run_path_on_sys(dfile);
 nfile = nhlbi_toolbox.run_path_on_sys(nfile);
-
-addpath(nhlbi_toolbox.run_path_on_sys('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Ramasawmy\local_MATLAB\ismrm_sunrise_matlab-master\irt\mex\v7'));
-addpath(nhlbi_toolbox.run_path_on_sys('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Ramasawmy\local_MATLAB\ismrm_sunrise_matlab-master\irt\mri'));
 
 %% Grab XML header
 iRD_s = nhlbi_toolbox.h5read_xml(dfile);
@@ -44,9 +41,7 @@ end
 user_opts.iter = 3;
 user_opts.number_cardiac_frames = 30;
 user_opts.ave_for_csm = 4;
-user_opts.IO = 0;
 user_opts.SNR = 0;
-user_opts.fullGrid = 0;
 % user_opts.sliding_window_width = 0;
 
 % Future work: toggle recons
@@ -55,11 +50,9 @@ user_opts.fullGrid = 0;
 % user_opts.recon_CS_TV = 0;
 
 %%% Recipe selection
-user_opts.recon_RT_frame    = 0;
-user_opts.recon_RT_SW       = 0;
 user_opts.recon_RB_ECG      = 1;
 user_opts.recon_RB_DCSG     = 0;
-user_opts.recon_RB_FSG      = 0;
+user_opts.recon_RT_CS       = 0;
 user_opts.gridAll           = 0;
 
 %% Grab sequence-specific info ### Requires user attention! ### 
@@ -116,7 +109,7 @@ clear user_opts_in user_opts_in_list
 %%  Grab general info
 % Future: switch to generic script set-up
 gangles     = (1 + double(max(raw_data.head.idx.kspace_encode_step_1)));
-pe2         = 1+double(max(raw_data.head.idx.kspace_encode_step_2));
+pe2         = (1 + double(max(raw_data.head.idx.kspace_encode_step_2)));
 contrasts   = (1 + double(max(raw_data.head.idx.contrast)));
 phases      = (1 + double(max(raw_data.head.idx.phase)));
 samples     = double(raw_data.head.number_of_samples(1));
@@ -146,16 +139,14 @@ disp(table( Experiment_parameters,Value )); clear Experiment_parameters Value; d
 % iRD_s_noise = nhlbi_toolbox.h5read_xml(nfile);
 % nhlbi_toolbox.check_noise_dependency(iRD_s, iRD_s_noise)
 dmtx = nhlbi_toolbox.noise_adjust(nfile, iRD_s, raw_data.head.sample_time_us(1)*1e-6, nhlbi_toolbox);
-dmtx = [];
+
 %% RT data grab : queue all en-masse
 data_store = complex(zeros([samples, length(raw_data.data), channels], 'single'));
 for i = 1:length(raw_data.data)
 %     RR_loop_count(i,gareps, 'Loading data')
     d = complex(raw_data.data{i}(1:2:end), raw_data.data{i}(2:2:end));
     d = reshape(d, samples, 1, channels);
-    if (~isempty(dmtx))
-        d = ismrm_apply_noise_decorrelation_mtx(d, dmtx);
-    end
+    d = ismrm_apply_noise_decorrelation_mtx(d, dmtx);
     data_store(:,i,:) = squeeze(d);
 end
 
@@ -170,8 +161,6 @@ end
 FOV = iRD_s.encoding.reconSpace.fieldOfView_mm.x/10;
 FOV = [FOV -1*FOV*(1 - user_opts.vds/100)]; disp(['FOV: ' num2str(FOV)])
 krmax = 1/(2*(FOV(1)/matrix_size(1)));
-
-user_opts.FOV = FOV;
 
 [k,g] = vds(traj_setup.sMax, traj_setup.gMax, dt, traj_setup.interleaves, FOV, krmax); close;
 
@@ -316,111 +305,15 @@ end
 sample_window = 1:sample_window;
 user_opts.csm = csm_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
 
-%% Flow reconstruction cook-book
+%% Reconstruction cook-book
 %% % Real-time reconstruction:
     %% === Frame reconstruction ===
     
-    if user_opts.recon_RT_frame
-        disp('Real-time reconstruction: Frame-by-frame');
-        % RTF and "proper" implementation:
-        % reps = gareps;
-        % RT_F.MAG = zeros(matrix, matrix, reps, sets);
-        % RT_F.PHA = zeros(matrix, matrix, reps);
-        %
-        % for i = 1:reps
-        %      RR_loop_count(i, reps);
-        %     sample_window = find(ismember(raw_data.head.idx.repetition, i));
-        %     ...
-        %     ...
-        %     ...
-        % end
-        
-        % Manual GASFib spiral config:
-%         gawindow = 5; % acceleration = traj_setup.interleaves/(gawindow/2) - with flow sets;
-        gawindow = user_opts.sliding_window_width;
-        
-        if ~isfield(user_opts,'reps')            
-            user_opts.reps= (gareps- user_opts.sliding_window_width+1);
-            if user_opts.reps<=0
-                user_opts.reps = gareps;
-            end
-        end
-        
-        reps = user_opts.reps;
-        
-        RT_F.MAG = zeros(matrix, matrix, reps, sets);
-        
-%         RT_F.PHA = zeros(matrix, matrix, reps);
-        
-        for i = 1:reps
-%             RR_loop_count(i, reps);
-            sample_window = (i-1)*gawindow  + (1:gawindow);
-            [RT_F.MAG(:,:,i,:)] = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
-        end
+    if user_opts.recon_RT_CS
+        disp('Real-time reconstruction: CS');
+      
         
     end
-
-    %% === Sliding-window reconstruction ===    
-    
-     if user_opts.recon_RT_SW
-        
-        disp('Real-time reconstruction: Sliding-window');
-        
-        if ~isfield(user_opts,'reps')
-            user_opts.reps= (gareps- user_opts.sliding_window_width+1);
-            if user_opts.reps<=0
-                user_opts.reps = gareps;
-            end
-        end
-        
-        reps = user_opts.reps;
-%         reps = 300;
-        RT_SW.MAG = zeros(matrix, matrix, reps, sets);
-        
-        if sets > 1
-        RT_SW.PHA = zeros(matrix, matrix, reps);
-        end
-        
-        for i = 1:reps % 1:gareps
-            RR_loop_count(i, reps);
-            sample_window = (i*sets - (sets-1)) + (0:(sets*user_opts.sliding_window_width-1));
-            
-            if sets > 1
-                [RT_SW.MAG(:,:,i,:), RT_SW.PHA(:,:,i)] = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
-            else
-                [RT_SW.MAG(:,:,i)] = sample_window_recon(raw_data, data_store, trajectory, gradients_nominal, sample_window, user_opts);
-            end
-        end
-     end
-    
-     %% Visualise RT data
-     
-%      if user_opts.recon_RT_frame || user_opts.recon_RT_SW
-%          M_play = [];
-%          P_play = [];
-%          max_frame = reps;
-%          
-%          if user_opts.recon_RT_frame && user_opts.recon_RT_SW
-%              max_frame= min(size(RT_SW.PHA,3),size(RT_F.PHA,3));
-%              if max_frame > 100
-%                  max_frame = 100;
-%              end
-%          end
-%          
-%          if user_opts.recon_RT_frame
-%              M_play = cat(1, M_play, RT_F.MAG(:,:,1:max_frame,1));
-%              P_play = cat(1, P_play, RT_F.PHA(:,:,1:max_frame));
-%          end
-%          if user_opts.recon_RT_SW
-%              M_play = cat(1, M_play, RT_SW.MAG(:,:,1:max_frame,1));
-%              P_play = cat(1, P_play, RT_SW.PHA(:,:,1:max_frame));
-%          end
-%          
-%          dev.implay_flow(M_play, P_play);
-%          
-%          clear M_play P_play
-%          
-%      end
 
 %% % Retrospective-binning reconstruction
 % === Limit reconstruction period ===
@@ -793,31 +686,20 @@ function [mag, pha] = sample_window_recon(raw_data, data_store, traj, grad, indi
 
     sets = 1 + double(max(raw_data.head.idx.set));
     gangles = 1 + double(max(raw_data.head.idx.kspace_encode_step_1));
+    pe2         = (1 + double(max(raw_data.head.idx.kspace_encode_step_2)));
     
-    if user_opts.IO == 0
-        traj_list = raw_data.head.idx.kspace_encode_step_1(indices)+1;
-    else
-        traj_list = raw_data.head.idx.kspace_encode_step_1(2*indices)+1;
-    end
+   traj_list = raw_data.head.idx.kspace_encode_step_1(indices)+1;
 
-    x = zeros([user_opts.matrix_size sets]);
+    x = zeros([user_opts.matrix_size pe2]);
     [samples,~,channels] = size(data_store);
     
-    for iSet = 1:sets
-        if user_opts.IO == 0
-            si = find(1+raw_data.head.idx.set(indices) == iSet);
-        else
-            si = find(1+raw_data.head.idx.set(2*indices) == iSet);
-        end
+    data_chunk = zeros(samples, gangles, pe2, channels);
+    for iSet = 1:pe2
+        si = find(1+raw_data.head.idx.kspace_encode_step_2(indices) == iSet);
         
         xi = traj_list(si);
         data = data_store(:,indices(si),:);
-         
-        if user_opts.SNR > 0
-            data = data + complex(randn(size(data)),randn(size(data)));
-        end
         
-        if user_opts.fullGrid == 0
         % ### >>> comment out to enable FULL GRID (slower) ###
         data2 = zeros(samples, gangles, channels);
         for j = 1:gangles
@@ -826,56 +708,43 @@ function [mag, pha] = sample_window_recon(raw_data, data_store, traj, grad, indi
             data2(:,j,:) = mean(data(:,xi==j,:),2);
         end
         xi = find(xitemp);
-        data = data2(:,xi,:);
+        %         data = data2(:,xi,:);
         % ### <<< comment out to enable FULL GRID (slower) ###
-        end 
         
-        data = reshape(data,length(xi)*samples,channels);
+        data_chunk(:,xi,iSet,:) = data2(:,xi,:);
         
+        xi_list{iSet} = xi;
         traj2 = traj(:,xi,:)*(pi/(max(traj(:))));
-        traj2 = reshape(traj2,length(xi)*size(traj,1),2);
-            
-        grad2 = reshape(grad(:,xi,:),length(xi)*size(grad,1),2);
+        traj3{iSet} = reshape(traj2,length(xi)*size(traj,1),2);
         
-       
-        
-        [x(:,:,iSet)] = recon_cg_RR(data, traj2, grad2,  user_opts);
-        
+        grad2{iSet} = reshape(grad(:,xi,:),length(xi)*size(grad,1),2);
     end
-%     mag = abs(x);
+    
+    % SoS
+    % ==============
+    data_chunk = fftshift( ifft( ifftshift(data_chunk), pe2, 3) );
+    
+    for iSet = 1:pe2
+        data = reshape(data_chunk(:,xi_list{iSet},iSet,:),length(xi_list{iSet})*samples,channels);
+        
+        [x(:,:,iSet)] = recon_cg_RR(data, traj3{iSet}, grad2{iSet},  user_opts);
+    end
+    % ==============
+    
+%   mag = abs(x);
     mag = x;
-    if sets > 1
-        pha = atan2(imag(x(:,:,2).*conj(x(:,:,1))), real(x(:,:,2).*conj(x(:,:,1))));
-    end
+
 end
 
 function [complexImage] = recon_cg_RR(data, traj, grad, user_opts)
 %         [samples,~,channels] = size(data);
 %         data = reshape(data,length(indices)*samples,channels);
-%       
-        if user_opts.fullGrid == 0
-            grad = complex(grad(:,1),grad(:,2));
-            kk = complex(traj(:,1),traj(:,2));
-            weights = abs(grad(:)) .* abs(sin(angle(grad(:))-angle(kk(:))))*10; %Estimating weights from Meyer et al. Magn Reson Med. 1992 Dec;28(2):202-13.
-           
-        else
-            fov = user_opts.FOV(1)*10; % mm
-            mask = true(user_opts.matrix_size);
-            sizeMask = size(mask);
-            nufft_args = {sizeMask, [6 6], 2*sizeMask, sizeMask/2, 'table', 2^12, 'minmax:kb'};
-            
-            kx = traj(:,1).*user_opts.matrix_size(1)/2;
-            ky = traj(:,2).*user_opts.matrix_size(2)/2;
-            ksp = [kx(:) ky(:)]./fov;
-            G = Gmri(ksp, mask, 'fov', fov, 'basis', {'dirac'}, 'nufft', nufft_args);
-            weights = abs(mri_density_comp(ksp, 'pipe','G',G.arg.Gnufft)); % figure, plot(csm_weights(1:samples))
-
-            
-        end
+%         
+        grad = complex(grad(:,1),grad(:,2));
+        kk = complex(traj(:,1),traj(:,2));
+        weights = abs(grad(:)) .* abs(sin(angle(grad(:))-angle(kk(:))))*10; %Estimating weights from Meyer et al. Magn Reson Med. 1992 Dec;28(2):202-13.
         
         st = nufft_init(traj, user_opts.matrix_size, [6 6],user_opts.matrix_size.*2, user_opts.matrix_size./2);
-         
-       
         
         % Custom SENSE implementation 
         I = ones(user_opts.matrix_size(1)); D = repmat(weights, [1 size(user_opts.csm,3)]);

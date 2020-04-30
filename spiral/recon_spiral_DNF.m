@@ -41,13 +41,16 @@ end
 user_opts_in_list = fieldnames(user_opts_in);
 
 % Future work: toggle recons
-user_opts.bin = 0;
-user_opts.SNR = 0;
-user_opts.GRAPPA = 0;
-user_opts.GRAPPA_ref_dfile = ''; % uigetfile?
-user_opts.arm_blocks = 1;
-user_opts.import_weights = [];
-user_opts.export_weights = 0;
+user_opts.bin               = 0;
+user_opts.SNR               = 0;
+user_opts.GRAPPA            = 0;
+user_opts.GRAPPA_ref_dfile  = '';   % uigetfile?
+user_opts.arm_blocks        = 1;
+user_opts.import_weights    = [];
+user_opts.export_weights    = 0;
+user_opts.SENSE             = 0;
+user_opts.csm_start         = 1;
+user_opts.iter              = 5;
 
 %%% Recipe selection
 % user_opts.traj_file = 'meas_MID00221_FID16805_VDSFLMEASVE_24x48_192m_20190531.mat'; 
@@ -83,39 +86,6 @@ if ~exist('nfile', 'var')
 end
 dmtx = nhlbi_toolbox.noise_adjust(nfile, iRD_s, raw_data.head.sample_time_us(1)*1e-6, nhlbi_toolbox);
 
-%% GRAPPA CALIBRATION DATA
-if user_opts.GRAPPA == 1 && isempty(user_opts.import_weights)
-cal_data = h5read(nhlbi_toolbox.run_path_on_sys(user_opts.GRAPPA_ref_dfile),'/dataset/data');
-% cal_dmtx = ismrm_dmtx_RR(user_opts.GRAPPA_ref_nfile, cal_data.head.sample_time_us(1)*1e-6); % NOISE FILE MUST BE THE SAME!
-
-samples     = double(cal_data.head.number_of_samples(1));
-interleaves_FS = (1 + double(max(cal_data.head.idx.kspace_encode_step_1)));
-channels    = double(cal_data.head.active_channels(1));
-reps_CAL        = (1 + double(max(cal_data.head.idx.repetition)));
-
-kspaceCalibration = complex(zeros([samples interleaves_FS reps_CAL channels],'single'));
-
-for ii = 1:length(cal_data.data)
-    
-    d1 = cal_data.data{ii};
-    d2 = complex(d1(1:2:end), d1(2:2:end));
-    d3 = reshape(d2, samples, channels); %  RE & IM (2)
-    
-    d3 = ismrm_apply_noise_decorrelation_mtx(d3, dmtx);
-    
-    
-    kspaceCalibration(:,...
-        cal_data.head.idx.kspace_encode_step_1(ii)+1, ...
-        cal_data.head.idx.repetition(ii)+1, ...
-        :) = d3;
-    
-end
-
-kspaceCalibration = permute(kspaceCalibration, [1 2 4 3]);
-% size(kspaceCalibration)
-% [samples,interleaves_FS,channels,reps_CAL]=size(kspaceCalibration);
-end
-
 %%  Grab general info
 % Future: switch to generic script set-up
 interleaves     = (1 + double(max(raw_data.head.idx.kspace_encode_step_1)));
@@ -142,6 +112,123 @@ matrix_size = [matrix matrix]; user_opts.matrix_size = matrix_size;
    
 fov = iRD_s.encoding.reconSpace.fieldOfView_mm.x;
 zf_inplane = 0;
+
+%% Load traj and crop traj
+ 
+gridReadLow = user_opts.gridReadLow;
+gridReadHigh = user_opts.gridReadHigh;
+samples_crop = [gridReadHigh - (gridReadLow)];
+
+if ischar(user_opts.traj_file)
+    % =================================
+    % LOAD MEASURED TRAJECTORY
+    % =================================
+    disp(['Loading ' user_opts.traj_file])
+    whos('-file',user_opts.traj_file);
+    load(user_opts.traj_file);
+    if gridReadHigh > size(kxall,1) %#ok<*NODEF>
+        warning('gridReadHigh is too high! Using length traj');
+        gridReadHigh = size(kxall,1);
+    end
+    
+    kxall = kxall(gridReadLow+1:gridReadHigh,:);
+    kyall = kyall(gridReadLow+1:gridReadHigh,:);
+    
+    % Scale trajectory
+    [nr,ns] = size(kxall);
+    traj = zeros(nr,ns,2);
+    traj(:,:,1) = kxall;
+    traj(:,:,2) = kyall;
+    traj = reshape(traj,nr*ns,2);
+    traj = traj*(pi/max(traj(:)));
+    
+    % Prep density compensation weights
+    kx = kxall./max(kxall(:)).*matrix_size(1)/2;
+    ky = kyall./max(kyall(:)).*matrix_size(2)/2;
+    ksp = [kx(:) ky(:)];
+    ksp = ksp./fov;
+    
+else
+    % =================================
+    % GIRF MEASUREMENT OVERRRIDE
+    % =================================
+    
+    [traj] = apply_GIRF_from_gradient(user_opts.traj_file.file, [gridReadLow gridReadHigh], user_opts.traj_file.dt, interleaves);
+    [nr, ns, ~] = size(traj);
+    traj = reshape(traj,nr*ns,2);
+    traj = traj*(pi/max(traj(:)));
+    
+    kx = traj(:,1)./max(traj(:)).*matrix_size(1)/2;
+    ky = traj(:,2)./max(traj(:)).*matrix_size(2)/2;
+    ksp = [kx(:) ky(:)];
+    ksp = ksp./fov;
+
+end
+
+mask = true(matrix_size(1),matrix_size(2));
+sizeMask = size(mask);
+nufft_args = {sizeMask, [6 6], 2*sizeMask, sizeMask/2, 'table', 2^12, 'minmax:kb'};
+G = Gmri(ksp, mask, 'fov', fov, 'basis', {'dirac'}, 'nufft', nufft_args);
+wi = abs(mri_density_comp(ksp, 'pipe','G',G.arg.Gnufft));
+
+% Prepare NUFFT operator
+st = nufft_init(traj, matrix_size, [6 6], matrix_size.*2, matrix_size./2);
+
+
+%% GRAPPA CALIBRATION DATA
+if ((user_opts.SENSE == 1 || user_opts.GRAPPA == 1) && isempty(user_opts.import_weights))
+cal_data = h5read(nhlbi_toolbox.run_path_on_sys(user_opts.GRAPPA_ref_dfile),'/dataset/data');
+% cal_dmtx = ismrm_dmtx_RR(user_opts.GRAPPA_ref_nfile, cal_data.head.sample_time_us(1)*1e-6); % NOISE FILE MUST BE THE SAME!
+
+samples     = double(cal_data.head.number_of_samples(1));
+interleaves_FS = (1 + double(max(cal_data.head.idx.kspace_encode_step_1)));
+channels    = double(cal_data.head.active_channels(1));
+reps_CAL        = (1 + double(max(cal_data.head.idx.repetition)));
+
+kspaceCalibration = complex(zeros([samples interleaves_FS reps_CAL channels],'single'));
+
+for ii = 1:length(cal_data.data)
+    
+    d1 = cal_data.data{ii};
+    d2 = complex(d1(1:2:end), d1(2:2:end));
+    d3 = reshape(d2, samples, channels); %  RE & IM (2)
+    
+    d3 = ismrm_apply_noise_decorrelation_mtx(d3, dmtx);
+    
+    
+    kspaceCalibration(:,...
+        cal_data.head.idx.kspace_encode_step_1(ii)+1, ...
+        cal_data.head.idx.repetition(ii)+1, ...
+        :) = d3;
+    
+end
+if user_opts.SENSE
+    % crop k-space, take the average, and remove the steady state descent (10 frames)
+    kspace_csm = squeeze(mean(kspaceCalibration(gridReadLow+1:gridReadHigh,:,user_opts.csm_start:end,:),3));
+    
+    % Hanning filter
+    hann = @(n) 0.5*(1 - cos(2*pi*[0:n-1]/n));
+    fwin = hann(2*samples_crop);
+    fwin = fwin(samples_crop+1:end);                                                % figure, plot(fwin)
+   
+    kspace_csm = reshape(kspace_csm, [interleaves_FS*samples_crop channels ]);
+    kspace_csm = kspace_csm.*repmat(reshape(fwin,[samples_crop 1]), [interleaves_FS channels]);
+    
+    x       = nufft_adj(kspace_csm.*repmat(wi,[1,channels]), st)/numel(repmat(wi,[1,channels]));
+    csm     = ismrm_estimate_csm_walsh( x );                                        % montage_RR(csm)
+    
+    % Check CSM image
+    % ccm_b1  = ismrm_compute_ccm(csm, eye(channels));  montage_RR(abs(sum(x.*ccm_b1,3)));
+     
+end
+
+kspaceCalibration = permute(kspaceCalibration, [1 2 4 3]);
+
+
+% size(kspaceCalibration)
+% [samples,interleaves_FS,channels,reps_CAL]=size(kspaceCalibration);
+end
+
     
 %% Grab data 
 
@@ -206,24 +293,10 @@ if user_opts.arm_blocks > 1
 end
 
 kspace = permute(kspace, [1 2 4 3]);
+   
 
-%% Load traj and crop 
- 
-gridReadLow = user_opts.gridReadLow;
-gridReadHigh = user_opts.gridReadHigh;
+%% Crop kspace & calibration data
 
-disp(['Loading ' user_opts.traj_file])
-whos('-file',user_opts.traj_file);
-load(user_opts.traj_file);
-if gridReadHigh > size(kxall,1) %#ok<*NODEF>
-    warning('gridReadHigh is too high! Using length traj');
-    gridReadHigh = size(kxall,1);
-end
-
-kxall = kxall(gridReadLow+1:gridReadHigh,:);
-kyall = kyall(gridReadLow+1:gridReadHigh,:);
-
-% Crop kspace & calibration data
 kspace = kspace(gridReadLow+1:gridReadHigh,:,:,:);
 
 if user_opts.arm_blocks > 1
@@ -234,32 +307,10 @@ if user_opts.GRAPPA == 1 && isempty(user_opts.import_weights)
 kspaceCalibration = kspaceCalibration(gridReadLow+1:gridReadHigh,:,:,:);
 end
 
-% Scale trajectory
-[nr,ns] = size(kxall);
-traj = zeros(nr,ns,2);
-traj(:,:,1) = kxall;
-traj(:,:,2) = kyall;
-traj = reshape(traj,nr*ns,2);
-traj = traj*(pi/max(traj(:)));
-
-% Prep density compensation weights
-kx = kxall./max(kxall(:)).*matrix_size(1)/2;
-ky = kyall./max(kyall(:)).*matrix_size(2)/2;
-ksp = [kx(:) ky(:)];
-ksp = ksp./fov;
-mask = true(matrix_size(1),matrix_size(2));
-sizeMask = size(mask);
-nufft_args = {sizeMask, [6 6], 2*sizeMask, sizeMask/2, 'table', 2^12, 'minmax:kb'};
-G = Gmri(ksp, mask, 'fov', fov, 'basis', {'dirac'}, 'nufft', nufft_args);
-wi = abs(mri_density_comp(ksp, 'pipe','G',G.arg.Gnufft));
-
-% Prepare NUFFT operator
-st = nufft_init(traj, matrix_size, [6 6], matrix_size.*2, matrix_size./2);
-    
-    
 %% Perform 2D recon
-if user_opts.GRAPPA == 0
+if user_opts.GRAPPA == 0 && user_opts.SENSE == 0
     % === fully sampled data ===
+    disp('Gridding reconstruction');
     
     [nr,ns,nc,nframes] = size(kspace);
     
@@ -348,9 +399,9 @@ if user_opts.GRAPPA == 0
         
     end
     
-else % GRAPPA == 1
-    % === under-sampled data ===
-    
+elseif user_opts.GRAPPA == 1
+    % === under-sampled GRAPPA ===
+    disp('GRAPPA reconstruction');
     
     if ~isempty(user_opts.import_weights)
         disp('Importing calibration');
@@ -460,6 +511,57 @@ else % GRAPPA == 1
         
         RTFM_output.img_b = imrec_b;
     end
+    
+elseif user_opts.SENSE == 1
+    % === under-sampled CG-SENSE ===
+    disp('CG-SENSE reconstruction');
+    
+    % ========================
+    % Set-up
+    % ========================
+    
+    % recalculate weights & gridding kernel for acq data
+    af = interleaves_FS/interleaves;
+    kxall = kxall(:,1:af:end);
+    kyall = kyall(:,1:af:end);
+    
+    [nr,ns] = size(kxall);
+    traj = zeros(nr,ns,2);
+    traj(:,:,1) = kxall;
+    traj(:,:,2) = kyall;
+    traj = reshape(traj,nr*ns,2);
+    traj = traj*(pi/max(traj(:)));
+
+    % Prep density compensation weights
+    kx = kxall./max(kxall(:)).*matrix_size(1)/2;
+    ky = kyall./max(kyall(:)).*matrix_size(2)/2;
+    ksp = [kx(:) ky(:)];
+    ksp = ksp./fov;
+    mask = true(matrix_size(1),matrix_size(2));
+    sizeMask = size(mask);
+    nufft_args = {sizeMask, [6 6], 2*sizeMask, sizeMask/2, 'table', 2^12, 'minmax:kb'};
+    G = Gmri(ksp, mask, 'fov', fov, 'basis', {'dirac'}, 'nufft', nufft_args);
+    wi = abs(mri_density_comp(ksp, 'pipe','G',G.arg.Gnufft));
+
+    % Prepare NUFFT operator
+    st = nufft_init(traj, matrix_size, [6 6], matrix_size.*2, matrix_size./2);
+      
+    % Custom SENSE implementation 
+    I = ones(matrix_size(1)); D = repmat(wi, [1 channels]);
+       
+    % ========================
+    % Frame reconstruction
+    % ========================
+    
+    [nr,ns,nc,nframes] = size(kspace);
+    kspace = reshape(kspace,nr*ns,nc, nframes);
+    imrec = zeros(matrix_size(1),  matrix_size(2), nframes);
+    
+    for f = 1:nframes
+        RR_loop_count(f,nframes);
+        imrec(:,:,f) = abs(cg_RR(kspace(:,:,f), st, I, D, csm, wi, user_opts.iter));
+    end
+    
 end
 
 %%
