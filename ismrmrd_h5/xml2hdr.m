@@ -58,15 +58,15 @@ end
 
     ismrmrd_s = struct();
     current_subfield = [];
-    
+
     for i = start_val:length(a)-2 % {</ismrmrdHeader>, ''}, can alternatively look for /ismrmrdHeader to finish..
-        
+
         if run_legacy_method
             [xml_code,value]=xml_interp_RR_old( a{i} );
         else
             [xml_code,value]=xml_interp_RR( a{i} );
         end
-        
+
         switch xml_code
             case 1
                 % start section
@@ -84,15 +84,15 @@ end
                     end
                 end
                 last_field = value;
-                
+
             case 2
                 % parameter value
                 fields_write = {fields{:} value.name};
                 ismrmrd_s = setfield(ismrmrd_s, fields_write{:}, value.value);
-                
+
             case 3
                 % end section
-                
+
                 if strcmp(current_subfield, value)
                     % close subfield
                     current_subfield = [];
@@ -101,9 +101,9 @@ end
                     % step back
                     fields = fields(1,1:length(fields)-1);
                 end
-                
+
         end
-        
+
     end
 
 end
@@ -116,7 +116,7 @@ test2 = regexp(str,'<');
 if isempty(test1) || isempty(test2)
     xml_code = 0; value = [];
 else
-    
+
     if length(test1) > 1
         % +++ parameter +++
         xml_code = 2;
@@ -153,8 +153,8 @@ function [xml_code, value] = xml_interp_RR_old(str)
 % xml_code = 1 (start section), 2 (parameter), 3 (end section)
 % 0s for header information, which has current format:
 % %
-% %     '<?xml'    'version="1.0"?>'    '<ismrmrdHeader'    'xmlns="http://www…'
-% %     'xmlns:xsi="http:/…'    'xmlns:xs="http://…'    'xsi:schemaLocatio…'
+% %     '<?xml'    'version="1.0"?>'    '<ismrmrdHeader'    'xmlns="http://wwwï¿½'
+% %     'xmlns:xsi="http:/ï¿½'    'xmlns:xs="http://ï¿½'    'xsi:schemaLocatioï¿½'
 % %      'ismrmrd.xsd">'
 
 test1 = regexp(str,'>');
@@ -163,7 +163,7 @@ test2 = regexp(str,'<');
 if isempty(test1) || isempty(test2)
     xml_code = 0; value = [];
 else
-    
+
     if length(test1) > 1
         % +++ parameter +++
         xml_code = 2;

@@ -1,7 +1,7 @@
 % scratch_functions.m
 % called by make_dev script
 
-% -- Search for local functions --  
+% -- Search for local functions --
 function fh = scratch_functions
     fh = localfunctions;
 end
@@ -25,11 +25,11 @@ ROI = zeros(size(IM));
 figure,
 for i = 1:numSlices
     imshow(IM(:,:,i),[0 4]);
-    
+
     for j = 1:numROIs
         set(gcf, 'Name', ['ROI ' num2str(j) '/' num2str(numROIs) ', Slice ' num2str(i) '/' num2str(numSlices)]);
         ROI(:,:,i) = ROI(:,:,i) + roipoly;
-        
+
     end
     hold on;
     contour(ROI(:,:,i), 'g');
@@ -41,8 +41,8 @@ end
 
 function plot_rois(xi,x)
 montage_RR(xi);
-hold on; 
-contour(x.GM_roi, 'b'); 
+hold on;
+contour(x.GM_roi, 'b');
 contour(x.WM_roi, 'y');
 end
 
@@ -91,7 +91,7 @@ if nargin > 2
              else
                  [A,map] = rgb2ind(repmat([M(:,:,idx); P(:,:,idx)],[1 1 3]),256);
              end
-            
+
         else
             [A,map] = rgb2ind(repmat([M(:,:,idx)],[1 1 3]),256);
         end
@@ -119,7 +119,7 @@ end
 R_info.axis = R_info.axis/norm(R_info.axis);
 R_info.angle = acosd((sum(diag(R)) - 1)/2);
 
-end 
+end
 
 function plot_poet_data(poet_data)
 
@@ -133,7 +133,7 @@ figure, hold on,
     plot(poet_data(:,3)/scale_pd(3)+yax_des(3), 'k-')
     plot(poet_data(:,4)/scale_pd(4)+yax_des(2), 'k-')
     plot(poet_data(:,5)/scale_pd(5)+yax_des(1), 'k-')
-    
+
     ytick('off'); ylim([-0.1 8.5]);
 
 names = {'Z';'Y';'X';'RF';'ADC'};
@@ -185,7 +185,7 @@ end
 
 function flow_info = rtfm_to_flow_info(RTFM_structure)
 
-flow_info.NominalInterval = RTFM_structure.RB_ECG.NominalInterval; 
+flow_info.NominalInterval = RTFM_structure.RB_ECG.NominalInterval;
 
 if regexpi(RTFM_structure.mrd_header.userParameters.userParameterLong.name, 'venc')
     flow_info.venc = RTFM_structure.mrd_header.userParameters.userParameterLong.value;
@@ -200,19 +200,19 @@ end
 
 function res = grs2rgb(img, map)
 %%Convert grayscale images to RGB using specified colormap.
-%	IMG is the grayscale image. Must be specified as a name of the image 
+%	IMG is the grayscale image. Must be specified as a name of the image
 %	including the directory, or the matrix.
 %	MAP is the M-by-3 matrix of colors.
 %
-%	RES = GRS2RGB(IMG) produces the RGB image RES from the grayscale image IMG 
+%	RES = GRS2RGB(IMG) produces the RGB image RES from the grayscale image IMG
 %	using the colormap HOT with 64 colors.
 %
-%	RES = GRS2RGB(IMG,MAP) produces the RGB image RES from the grayscale image 
-%	IMG using the colormap matrix MAP. MAP must contain 3 columns for Red, 
-%	Green, and Blue components.  
+%	RES = GRS2RGB(IMG,MAP) produces the RGB image RES from the grayscale image
+%	IMG using the colormap matrix MAP. MAP must contain 3 columns for Red,
+%	Green, and Blue components.
 %
 %	Example 1:
-%	open 'image.tif';	
+%	open 'image.tif';
 %	res = grs2rgb(image);
 %
 %	Example 2:
@@ -221,7 +221,7 @@ function res = grs2rgb(img, map)
 %
 % 	See also COLORMAP, HOT
 %
-%	Written by 
+%	Written by
 %	Valeriy R. Korostyshevskiy, PhD
 %	Georgetown University Medical Center
 %	Washington, D.C.
@@ -249,10 +249,10 @@ end;
 % Calculate the indices of the colormap matrix
 a = double(a);
 a(a==0) = 1; % Needed to produce nonzero index of the colormap matrix
-ci = ceil(l*a/max(a(:))); 
+ci = ceil(l*a/max(a(:)));
 % Colors in the new image
 [il,iw] = size(a);
-r = zeros(il,iw); 
+r = zeros(il,iw);
 g = zeros(il,iw);
 b = zeros(il,iw);
 r(:) = map(ci,1);
@@ -260,8 +260,8 @@ g(:) = map(ci,2);
 b(:) = map(ci,3);
 % New image
 res = zeros(il,iw,3);
-res(:,:,1) = r; 
-res(:,:,2) = g; 
+res(:,:,1) = r;
+res(:,:,2) = g;
 res(:,:,3) = b;
 end
 
@@ -321,7 +321,7 @@ fprintf(1, '\n');
 end
 
 function grab_dicom_study(dicomPath)
-% 
+%
 % pastes all data in to the command window
 
 if nargin < 1
@@ -355,10 +355,10 @@ dir_check = [dir_dp(3:end).isdir];
 if round(mean(dir_check)) == 0
     % dicoms need to be sorted
     dicom_sort_folder(dicomPath);
-    
+
     % now grab sorted folder
     dir_dp = dir(dicomPath);
-    
+
 end
 
 %
@@ -367,7 +367,7 @@ study_cell = cell(length(dir_dp ), 1);
 for i = 1:length(dir_dp)
     temp = dir_dp(i).name;
     study_cell{i} = ['[s' temp ', info_' temp '] = dicom_load_scan([ddirPath ''' temp ''']);' ];
-    
+
 end
 study_cell{1} = ['ddirPath = ''' dicomPath ''';'];
 study_cell{2} = [''];
@@ -443,7 +443,7 @@ traj_order = zeros(1, num_int);
 if fib_flag == 0
     x1 = 1:floor(num_int/2);
     x2 = fliplr((floor(num_int/2)+1):num_int);
-    
+
     if mod(num_int,2) == 0
         traj_order(1:2:end) = x1;
         traj_order(2:2:end) = x2;
@@ -451,7 +451,7 @@ if fib_flag == 0
         traj_order(1:2:end) = x2;
         traj_order(2:2:end) = x1;
     end
-else 
+else
     fib_series = [3 5 8 13 21 34 55 89 144];
     fib_step = fib_series(find(num_int < fib_series, 1, 'first')-fib_flag); % 1, normal, 2, tiny step (better?)
     temp = 1 + mod([0:fib_step:(fib_step*num_int)], num_int);
@@ -472,12 +472,12 @@ if ( ((pi*(1/4)) < abs(theta)) && ( abs(theta) < (pi*(3/4))) )
     theta_orig = theta;
     theta = abs(theta - pi/2);
     sign = int8(theta <= pi/2); if sign == 0; sign = -1; end
-    
+
     x = r*cos(theta)*sign;
     y = r*sin(theta);
-    
+
 else
-    
+
     x = r*sin(theta);
     y = r*cos(theta);
 end
@@ -501,7 +501,7 @@ function [Afp,Bfp]=freeprecess(T,T1,T2,df)
 %	and off-resonance df.  Times in ms, off-resonance in Hz.
 
 phi = 2*pi*df*T/1000;	% Resonant precession, radians.
-E1 = exp(-T/T1);	
+E1 = exp(-T/T1);
 E2 = exp(-T/T2);
 
 Afp = [E2 0 0;0 E2 0;0 0 E1]*zrot(phi);
