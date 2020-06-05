@@ -1,5 +1,5 @@
 function [sfile] = h5_edit_mrd(dfile, user_opts)
-% [sfile] = h5_edit_mrd(dfile, user_opts)
+% [sfile] = h5_edit_mrd(<dfile, UI>, <user_opts, UI>)
 % 20200429 : Current implementation only automatically loads trajectories
 %
 % ///////////////////////////////////////////////////////////////////////
@@ -28,10 +28,12 @@ function [sfile] = h5_edit_mrd(dfile, user_opts)
 % >> h5_edit_mrd                % Use UI for file load (load file to edit, load traj file)
 %
 % % defaults user_opts
-% % user_opts.traj       = 1;
-% % user_opts.waveform   = 0;
-% % user_opts.header     = 0;
-% % user_opts.savename   = [];
+% % user_opts.header        = [];
+% % user_opts.data          = [];
+% % user_opts.traj          = 1;
+% % user_opts.traj_and_sort = 0; % being too lazy to do it yourself <2, 3>
+% % user_opts.waveform      = 0;
+% % user_opts.savename      = []; % 'out_edit.h5';
 %
 % VDS example (i.e. offline add GIRF)
 % >> user_opts.traj = 'vds';
@@ -81,11 +83,11 @@ end
 user_opts_in_list = fieldnames(user_opts_in);
 
 % defaults
+user_opts.header        = [];
 user_opts.data          = [];
 user_opts.traj          = 1;
 user_opts.traj_and_sort = 0; % being too lazy to do it yourself <2, 3>
 user_opts.waveform      = 0;
-user_opts.header        = 0;
 user_opts.savename      = []; % 'out_edit.h5';
 
 % overwrite with options 
@@ -110,11 +112,44 @@ disp('\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\'); disp(' ');
 dfile_info  = h5info(dfile);
 dfile_dsets = dfile_info.Groups.Datasets;
 
-xmlstring   = h5read(dfile,'/dataset/xml');
-raw_data    = h5read(dfile,'/dataset/data');
+dsetin = ismrmrd.Dataset(dfile, 'dataset');
+hdr = ismrmrd.xml.deserialize(dsetin.readxml);
+xmlstring = ismrmrd.xml.serialize(hdr); % xmlstring   = h5read(dfile,'/dataset/xml');
+
+raw_data    = h5read(dfile,'/dataset/data'); % D = dsetin.readAcquisition();
 
 if length(dfile_dsets) == 3 % some assumptions here
 wav_data    = h5read(dfile,'/dataset/waveforms');
+end
+
+%% edit header
+
+if (~isempty(user_opts.header))
+    disp('EDITING HEADER'); 
+    
+    if isstruct((user_opts.header))
+        % If only editing specific header elements
+    
+        hdr2 = user_opts.header;
+        list1 = fieldnames(user_opts.header);
+       
+        for i = 1:length(list1)
+            subhdr = update_header(hdr.(matlab.lang.makeValidName(list1{i})), hdr2.(matlab.lang.makeValidName(list1{i})));
+            hdr.(matlab.lang.makeValidName(list1{i})) = subhdr;
+        end
+        
+    elseif (ischar(user_opts.header) && regexp(user_opts.header, '.mat'))
+        % Load pre-edited header (all of it!)
+        
+        loadname = whos('-file',user_opts.header);
+        eval(['hdr = ' loadname.name]);
+    else
+        % edit header as you like ??
+        
+        openvar('hdr');pause; % ???
+    end
+
+    xmlstring = ismrmrd.xml.serialize(hdr);
 end
 
 %% edit data
@@ -138,8 +173,7 @@ end
 
 end
 
-disp('EDITING TRAJ'); 
-
+%% edit traj
 % ============================================
 % TRAJ
 % ============================================
@@ -150,6 +184,7 @@ disp('EDITING TRAJ');
     % so the 3rd dimension is assigned to the weights.
 
 if ischar(user_opts.traj) % user_opts.traj == 'vds'
+    disp('EDITING TRAJ'); 
     if (~isempty(regexp(user_opts.traj, '.mat')))
         load(user_opts.traj);
         
@@ -162,9 +197,10 @@ if ischar(user_opts.traj) % user_opts.traj == 'vds'
         % No weights (2D traj dim = 2)
         % [traj_data, traj_dims] = demo_traj(xmlstring, raw_data);
         % add weights (2D traj dim = 3)
-        [traj_data, traj_dims] = demo_traj(xmlstring, raw_data, true);
+        [traj_data, traj_dims] = demo_traj(hdr, raw_data, true);
     end
 else
+    disp('EDITING TRAJ'); 
     if numel(user_opts.traj) == 1
     % user input
     [traj_file, temp] = uigetfile('*.mat', 'Choose traj mat file, cancel for vds');
@@ -172,7 +208,7 @@ else
     if ischar(traj_file)
         load([temp traj_file]); clear traj_file temp; 
     else
-        [traj_data, traj_dims] = demo_traj(xmlstring, raw_data);
+        [traj_data, traj_dims] = demo_traj(hdr, raw_data);
     end
     
     if ~exist('traj_dims')
@@ -185,10 +221,10 @@ else
         traj_data = user_opts.traj*(0.5/max(max(max(user_opts.traj)))); % GT wants -0.5/0.5
         
         [samples, interleaves,~] = size(traj_data);
-        iRD_s           = xml2hdr(xmlstring{1});
-        matrix          = iRD_s.encoding.reconSpace.matrixSize.x;
+        
+        matrix          = hdr.encoding.reconSpace.matrixSize.x;
         matrix_size     = [matrix matrix];
-        FOV = iRD_s.encoding.reconSpace.fieldOfView_mm.x/10;
+        FOV             = hdr.encoding.reconSpace.fieldOfView_mm.x/10;
         
         if user_opts.traj_and_sort == 3
             [temp,traj_dims] = add_weights(traj_data, interleaves, samples, matrix_size, FOV);
@@ -207,6 +243,8 @@ for i = 1:length(raw_data.data)
     raw_data.head.trajectory_dimensions(i) = uint16(traj_dims); 
 end
 
+%% edit waveform
+
 %% save data
 
 disp('\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\'); disp(' ');
@@ -224,7 +262,7 @@ dset = ismrmrd.Dataset(sfile);
 
 % xml
 disp('Writing <strong>xml</strong>');
-dset.writexml(xmlstring{:});
+dset.writexml(xmlstring);
 
 % data
 disp('Appending <strong>acquisition</strong>');     % temp_acq =ismrmrd.Acquisition(raw_data.head, raw_data.traj, raw_data.data);
@@ -247,8 +285,29 @@ dset.close();
 
 end
 
+%% local functions
 
-function [traj_data, traj_dims] = demo_traj(xmlstring, raw_data, addWeights)
+function [subhdr3] = update_header(subhdr, subhdr2)
+% ============================================
+% Update specific fields
+% ============================================   
+
+subhdr3 = subhdr;
+if isstruct(subhdr2) && (length(subhdr3) < 2)
+    % recursive search for exising fields
+    list1 = fieldnames(subhdr2);
+    for i = 1:length(list1) 
+        subhdr3.(matlab.lang.makeValidName(list1{i})) = ...
+            update_header(subhdr3.(matlab.lang.makeValidName(list1{i})), ...
+                          subhdr2.(matlab.lang.makeValidName(list1{i})));
+    end
+else
+    % update parameter
+    subhdr3 = subhdr2;
+end
+end
+
+function [traj_data, traj_dims] = demo_traj(hdr, raw_data, addWeights)
 % ============================================
 % Get params
 % ============================================   
@@ -257,16 +316,15 @@ function [traj_data, traj_dims] = demo_traj(xmlstring, raw_data, addWeights)
         addWeights = false;
     end
     
-    iRD_s           = xml2hdr(xmlstring{1});
     interleaves     = (1 + double(max(raw_data.head.idx.kspace_encode_step_1)));
     samples         =      double(raw_data.head.number_of_samples(1));
-    matrix          = iRD_s.encoding.reconSpace.matrixSize.x;
+    matrix          = hdr.encoding.reconSpace.matrixSize.x;
     dt              = raw_data.head.sample_time_us(1)*1e-6;
     matrix_size     = [matrix matrix];
 
-    FOV = iRD_s.encoding.reconSpace.fieldOfView_mm.x/10;
-    traj_setup.gMax = iRD_s.encoding.userParameterDouble.value;
-    traj_setup.sMax = iRD_s.encoding.userParameterDouble_1.value;
+    FOV = hdr.encoding.reconSpace.fieldOfView_mm.x/10;
+    traj_setup.gMax = hdr.encoding.trajectoryDescription.userParameterDouble(1).value;
+    traj_setup.sMax = hdr.encoding.trajectoryDescription.userParameterDouble(2).value;%hdr.encoding.trajectoryDescription.userParameterLong.value;
     
     krmax = 1/(2*(FOV(1)/matrix_size(1)));
     
@@ -302,7 +360,7 @@ function [traj_data, traj_dims] = demo_traj(xmlstring, raw_data, addWeights)
 tRR = 0; % custom clock-shift
 R = [raw_data.head.read_dir(:,1),raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
 sR.R = R;
-sR.T = iRD_s.acquisitionSystemInformation.systemFieldStrength_T;
+sR.T = hdr.acquisitionSystemInformation.systemFieldStrength_T;
 
 trajectory_nominal = apply_GIRF(gradients_nominal, dt, sR, tRR );           % legacy > % trajectory_nominal = apply_GIRF(gradients_nominal, dt, R, tRR );
 trajectory_nominal = trajectory_nominal(:,:,1:2);

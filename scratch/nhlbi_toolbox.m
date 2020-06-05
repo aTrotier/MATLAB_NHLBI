@@ -22,6 +22,50 @@ ismrmrd_xml = xml2hdr(xml_string{1});
 end
 
 % -------- TOOLS (w/o dependent functions) ---------------
+function generate_protocol_notes(dirName)
+make_nhlbi_toolbox;
+if nargin < 1
+    dirName = uigetdir;    
+end
+
+% template
+template_file = nhlbi_toolbox.run_path_on_sys('\\hl-share.nhlbi.nih.gov\tmb\Lab-Campbell\Ramasawmy\data\Protocol_Notes_Template.xlsx');
+titleCell       = 'B2';
+listStartCol    = 'C';
+listStartRow    = 10;
+
+% Write to file
+fileName = 'Protocol_Notes.xlsx';
+
+% Header
+studyName = regexp(dirName, filesep);
+if studyName(end) == length(dirName)
+    studyName = dirName(studyName(end-1)+1:end);
+else
+     studyName = dirName(studyName(end)+1:end);
+end
+
+fileName = nhlbi_toolbox.run_path_on_sys([dirName filesep fileName]);
+copyfile(template_file, fileName);
+xlswrite(fileName, {studyName}, 'Sheet1', titleCell);
+
+% Scan List
+dirStudy = dir(dirName);
+for i = 1:length(dirStudy)
+    if regexp(dirStudy(i).name, '.dat')
+        xlswrite(fileName, {dirStudy(i).name}, 'Sheet1', [listStartCol num2str(listStartRow)]);
+        listStartRow = listStartRow + 1;
+    end
+end
+
+if ispc
+    winopen(fileName);
+else
+    system(['open ' fileName]); %?
+end
+
+end
+
 function check_noise_dependency(iRD_s_data, iRD_s_noise)
 asi_names = fieldnames(iRD_s_data.acquisitionSystemInformation);
 nasi_names = fieldnames(iRD_s_noise.acquisitionSystemInformation);

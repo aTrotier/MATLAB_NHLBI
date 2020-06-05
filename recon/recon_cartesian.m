@@ -57,7 +57,7 @@ header.im_header = im_header;
 if (samples < ismrmrd_s.encoding.encodedSpace.matrixSize.x); disp('Asymmetric Echo'); end;
 % disp(['BW: ' num2str(dt)])
 
-IM_R = [raw_data.head.read_dir(:,1), raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ];
+IM_R = [raw_data.head.phase_dir(:,1), raw_data.head.read_dir(:,1), raw_data.head.slice_dir(:,1)  ];
  
 disp(' ');disp('### Acquisition Dimensions ###');disp(' ');
 header_info = {'Encoded_Res','Encoded_FOV','Recon_Res','Recon_FOV'}';

@@ -13,8 +13,9 @@
 
 function [freq, stats, header] = recon_spectrum(file)
 %% Read data file
+make_nhlbi_toolbox;
 
-file = RR_run_on_mac(file); % incorporate with NHLBI toolbox
+file = nhlbi_toolbox.run_path_on_sys(file); % incorporate with NHLBI toolbox
 
 raw_data= h5read(file, '/dataset/data');
 ismrmrd_s = read_h5_header(file); disp(' ');disp('### Protocol Name ###');disp(ismrmrd_s.measurementInformation.protocolName);disp(' ');
@@ -61,7 +62,7 @@ clear Data_CoilName Data_CoilNum
 
 %% Grab data
 
-kspace = complex(zeros([([samples pe1 pe2 averages slices contrasts phases reps sets channels],'single'));
+kspace = complex(zeros([samples pe1 pe2 averages slices contrasts phases reps sets channels],'single'));
 % disp(['Kspace dims: ' num2str(size(kspace))])
 
 for ii = 1:length(raw_data.data)

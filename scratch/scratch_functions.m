@@ -99,7 +99,7 @@ if nargin > 2
         if idx == 1
             imwrite(A,map,gif_filename,'gif','LoopCount',Inf,'DelayTime',.12); % 0.25 s
         else
-            imwrite(A,map,gif_filename,'gif','WriteMode','append','DelayTime',.25);
+            imwrite(A,map,gif_filename,'gif','WriteMode','append','DelayTime',.12);
         end
     end
 end
@@ -366,10 +366,10 @@ study_cell = cell(length(dir_dp ), 1);
 
 for i = 1:length(dir_dp)
     temp = dir_dp(i).name;
-    study_cell{i} = ['[s' temp ', info_' temp '] = dicom_load_scan([dirPath ''' temp ''']);' ];
+    study_cell{i} = ['[s' temp ', info_' temp '] = dicom_load_scan([ddirPath ''' temp ''']);' ];
     
 end
-study_cell{1} = ['dirPath = ''' dicomPath ''';'];
+study_cell{1} = ['ddirPath = ''' dicomPath ''';'];
 study_cell{2} = [''];
 
 fprintf(1, '%s \n', study_cell{:});

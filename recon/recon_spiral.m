@@ -167,7 +167,7 @@ end
 trajectory_nominal = zeros(samples2,interleaves,2);
 gradients_nominal =  zeros(samples2,interleaves,2);
 
-neg = -1;
+neg = 1;
 for solid_int= 1:interleaves
     rot = (solid_int-1)*(2*pi/interleaves);
     trajectory_nominal(:,solid_int,2) = neg*-( real(k(1:samples2)) *cos(rot) + imag(k(1:samples2)) *sin(rot));
@@ -178,31 +178,38 @@ end
 
 %% GIRF corrections
 
-trajectory_nominal_u = trajectory_nominal;                                  % store nominal trajectory
-
-% ============================================
-% Apply shift if zero-padded ADC
-% ============================================
-
-gradients_store = gradients_nominal;
-if delayFactor > 0
-    spiral_start = floor(delayFactor*(1e-5)/dt); if spiral_start == 0; spiral_start = 1; end;
-    gradients_nominal = cat(1,zeros([spiral_start interleaves 2]), gradients_store(1:(samples2-spiral_start),:,:));
-end
-
-% ============================================
-% Apply shift if zero-padded ADC
-% ============================================
-tRR = 0; % custom clock-shift
+if ~(exist('apply_GIRF', 'file')==0)
     
-R = [raw_data.head.phase_dir(:,1), raw_data.head.read_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
-    % R = [raw_data.head.read_dir(:,1), raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix     
-
-sR.R = R;
-sR.T = iRD_s.acquisitionSystemInformation.systemFieldStrength_T;
-
-trajectory_nominal = apply_GIRF(gradients_nominal, dt, sR, tRR );           % legacy > % trajectory_nominal = apply_GIRF(gradients_nominal, dt, R, tRR );
-trajectory_nominal = trajectory_nominal(:,:,1:2);
+    trajectory_nominal_u = trajectory_nominal;                                  % store nominal trajectory
+    
+    % ============================================
+    % Apply shift if zero-padded ADC
+    % ============================================
+    
+    gradients_store = gradients_nominal;
+    if delayFactor > 0
+        spiral_start = floor(delayFactor*(1e-5)/dt); if spiral_start == 0; spiral_start = 1; end;
+        gradients_nominal = cat(1,zeros([spiral_start interleaves 2]), gradients_store(1:(samples2-spiral_start),:,:));
+    end
+    
+    % ============================================
+    % Apply shift if zero-padded ADC
+    % ============================================
+    % R_pcs_dcs = lookup_PCS_DCS(iRD_s.measurementInformation.patientPosition);
+    
+    tRR = 0; % custom clock-shift
+    
+    R_pcs_gcs = [raw_data.head.phase_dir(:,1), raw_data.head.read_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix
+    % R_pcs_gcs = [raw_data.head.read_dir(:,1), raw_data.head.phase_dir(:,1), raw_data.head.slice_dir(:,1)  ]; %Rotation matrix
+    
+    sR.R = R_pcs_gcs;
+    % sR.R = R_pcs_dcs*R_pcs_gcs;
+    sR.T = iRD_s.acquisitionSystemInformation.systemFieldStrength_T;
+    
+    trajectory_nominal = apply_GIRF(gradients_nominal, dt, sR, tRR );           % legacy > % trajectory_nominal = apply_GIRF(gradients_nominal, dt, R, tRR );
+    trajectory_nominal = trajectory_nominal(:,:,1:2);
+    
+end
 
 %% Collect all data
 kspace = complex(zeros([samples interleaves pe2 averages slices contrasts phases reps sets channels],'single'));

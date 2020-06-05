@@ -73,8 +73,6 @@ for nRc = loopVector
                 
             end
             
-            outputStruct.(matlab.lang.makeValidName(['data' num2str(nRc)])).P = Pha_data;
-            
         else % Just magnitude
             m_ind = m_ind + 1;
             Mag_data(:,:,:,m_ind) = squeeze(double(h5read(filename, [temp '/data'])));
@@ -83,11 +81,12 @@ for nRc = loopVector
                 info = h5read(filename, [temp '/header']);
             end
             
-            
+            Pha_data = [];
         end
     end
     
     outputStruct.(matlab.lang.makeValidName(['data' num2str(nRc)])).M = Mag_data;
+    outputStruct.(matlab.lang.makeValidName(['data' num2str(nRc)])).P = Pha_data;
     outputStruct.(matlab.lang.makeValidName(['data' num2str(nRc)])).i = info;
 end
 
